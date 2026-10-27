@@ -1,0 +1,55 @@
+# One cloud server (Timeweb):
+#   caddy  TLS and the only ports open to the internet
+#   app    the CRM server
+#   db     Postgres, internal network only
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: crm
+      LANG: C.UTF-8
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U crm -d crm']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://crm:${POSTGRES_PASSWORD}@db:5432/crm
+      CRM_USERS: ${CRM_USERS}
+      SESSION_SECRET: ${SESSION_SECRET}
+    networks: [internal]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    networks: [internal]
+
+volumes:
+  db-data:
+  caddy-data:
+
+networks:
+  internal:

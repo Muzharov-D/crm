@@ -28,9 +28,20 @@ PORT=8790
 Without `DATABASE_URL`, data goes to `data/`. For live front-end edits run
 `npm start` and `npm run dev` side by side (http://localhost:5274, API proxied).
 
-## Render
+## Timeweb (or any server with Docker)
 
-`render.yaml` creates the web service and a Postgres database in Frankfurt.
-After the first deploy, set `CRM_USERS` in the service environment.
+`docker-compose.yml`: Caddy (HTTPS, ports 80/443), the app, Postgres
+(internal network only). Point the domain's A record at the server first,
+otherwise Caddy cannot get a certificate.
+
+```sh
+git clone <repo> crm && cd crm
+cp .env.example .env    # fill DOMAIN, CRM_USERS, SESSION_SECRET, POSTGRES_PASSWORD
+docker compose up -d --build
+```
+
+Update: `git pull && docker compose up -d --build`.
+
+Database dump: `docker compose exec db pg_dump -U crm crm > backups/crm-$(date +%F).sql`.
 
 All users of one server share the same data.
