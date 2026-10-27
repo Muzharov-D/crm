@@ -1,0 +1,27 @@
+{
+  "name": "crm",
+  "version": "1.0.0",
+  "description": "Sales CRM on its own server (based on HeyPuter/everything, MIT)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vite": "^8.2.0",
+    "vitest": "^4.0.18"
+  },
+  "dependencies": {
+    "lucide": "^1.28.0",
+    "express": "^5.1.0",
+    "pg": "^8.16.0"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}
