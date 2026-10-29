@@ -1,7 +1,7 @@
 {
-  "name": "Sales CRM",
-  "short_name": "Sales CRM",
-  "description": "Leads, companies, deal stages, follow-ups, meeting history, and sales forecasts. Private, fast, on your own Puter cloud.",
+  "name": "CRM",
+  "short_name": "CRM",
+  "description": "Контакты, компании, сделки, задачи и прогноз продаж.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -26,5 +26,6 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ]
+  ],
+  "lang": "ru"
 }

@@ -14,8 +14,7 @@ export function applyTheme(mode) {
     delete rootEl.dataset.theme;
   }
   try {
-    if (mode === 'light' || mode === 'dark') localStorage.setItem(LS_KEY, mode);
-    else localStorage.removeItem(LS_KEY);
+    localStorage.setItem(LS_KEY, mode === 'light' || mode === 'dark' ? mode : 'system');
   } catch {}
   updateThemeColorMeta();
 }

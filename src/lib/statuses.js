@@ -5,18 +5,18 @@
  * data layer they feed.
  */
 export const CONTACT_STATUSES = [
-  { value: 'lead', label: 'Lead' },
-  { value: 'active', label: 'In conversation' },
-  { value: 'customer', label: 'Customer' },
-  { value: 'lost', label: 'Lost touch' },
+  { value: 'lead', label: 'Лид' },
+  { value: 'active', label: 'В работе' },
+  { value: 'customer', label: 'Клиент' },
+  { value: 'lost', label: 'Потерян' },
 ];
 
 /** The kinds of touch that can be logged against a record. */
 export const ACTIVITY_TYPES = [
-  { value: 'meeting', label: 'Meeting', icon: 'video' },
-  { value: 'call', label: 'Call', icon: 'phone' },
-  { value: 'email', label: 'Email', icon: 'mail' },
-  { value: 'note', label: 'Note', icon: 'note' },
+  { value: 'meeting', label: 'Встреча', icon: 'video' },
+  { value: 'call', label: 'Звонок', icon: 'phone' },
+  { value: 'email', label: 'Письмо', icon: 'mail' },
+  { value: 'note', label: 'Заметка', icon: 'note' },
 ];
 
 /** The type record for an id; an unknown one reads as a note. */

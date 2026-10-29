@@ -76,7 +76,7 @@ async function boot() {
   }
 
   // Settings win over the pre-paint localStorage value (they sync across devices).
-  applyTheme(store.settings.theme || 'system');
+  applyTheme(store.settings.theme || 'light');
   mountShell(appRoot);
   // Catch up with what other sessions wrote whenever this tab comes back
   // to the foreground - otherwise a stale tab's first edit writes last

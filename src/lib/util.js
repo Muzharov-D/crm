@@ -72,88 +72,105 @@ export function daysBetween(a, b) {
   return Math.round((parse(b) - parse(a)) / 86400000);
 }
 
-const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/**
+ * Russian plural form: plural(5, ['сделка', 'сделки', 'сделок']) → "сделок".
+ * The three forms are for 1, 2-4 and 5+ (21 takes the first, 11-14 the last).
+ */
+export function plural(n, [one, few, many]) {
+  const abs = Math.abs(Math.trunc(Number(n) || 0));
+  const mod10 = abs % 10;
+  const mod100 = abs % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
 
-/** "Aug 12" or "Aug 12, 2025" when the year differs from today's. */
+/** "5 сделок": the number followed by its plural form. */
+export function countLabel(n, forms) {
+  return `${n} ${plural(n, forms)}`;
+}
+
+/* Month names: genitive for a date ("12 авг"), nominative for a month on its own ("Авг 2026"). */
+const MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+const MONTHS_ALONE = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+
+/** "12 авг" or "12 авг 2025" when the year differs from today's. */
 export function formatDate(iso, { year = 'auto' } = {}) {
   if (!iso) return '';
   const [y, m, d] = String(iso).split('-').map(Number);
-  // Anything we can't name is shown as it was stored - "undefined 13, 2020"
+  // Anything we can't name is shown as it was stored - "13 undefined 2020"
   // helps nobody.
   if (!MONTHS_SHORT[m - 1] || !Number.isFinite(d)) return String(iso);
   const showYear = year === 'always' || (year === 'auto' && y !== new Date().getFullYear());
-  return `${MONTHS_SHORT[m - 1]} ${d}${showYear ? `, ${y}` : ''}`;
+  return `${d} ${MONTHS_SHORT[m - 1]}${showYear ? ` ${y}` : ''}`;
 }
 
-/** "14:30" → "2:30pm" (en-US, matching the rest of the UI's formatting). */
+/** "14:30" → "14:30", "9:05" → "9:05": 24-hour clock. */
 export function formatClock(hhmm) {
   if (!hhmm) return '';
   const [h, m] = hhmm.split(':').map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return '';
-  const suffix = h < 12 ? 'am' : 'pm';
-  const hour = h % 12 === 0 ? 12 : h % 12;
-  return m ? `${hour}:${pad2(m)}${suffix}` : `${hour}${suffix}`;
+  return `${h}:${pad2(m)}`;
 }
 
 /**
- * "Aug 2026" for a YYYY-MM key. `year: 'auto'` drops the year inside the
+ * "Авг 2026" for a YYYY-MM key. `year: 'auto'` drops the year inside the
  * current one, the way formatDate does - for labels sitting next to a
- * month that is already named ("Won in Aug ... vs Jul").
+ * month that is already named.
  */
 export function formatMonth(key, { year = 'always' } = {}) {
   const [y, m] = key.split('-').map(Number);
   const showYear = year === 'always' || (year === 'auto' && y !== new Date().getFullYear());
-  return `${MONTHS_SHORT[m - 1]}${showYear ? ` ${y}` : ''}`;
+  return `${MONTHS_ALONE[m - 1]}${showYear ? ` ${y}` : ''}`;
 }
 
 /**
  * Human framing of a due date relative to today:
- * "3d overdue" / "Today" / "Tomorrow" / "In 5d" / "Aug 24".
+ * "просрочено на 3 дн." / "Сегодня" / "Завтра" / "Через 5 дн." / "24 авг".
  * Also reports the status so the UI can color it without re-deriving.
  */
 export function dueLabel(iso, today = todayISO()) {
   const diff = daysBetween(today, iso);
-  if (diff < 0) return { text: `${-diff}d overdue`, status: 'overdue' };
-  if (diff === 0) return { text: 'Today', status: 'today' };
-  if (diff === 1) return { text: 'Tomorrow', status: 'soon' };
-  if (diff <= 7) return { text: `In ${diff}d`, status: 'soon' };
+  if (diff < 0) return { text: `просрочено на ${-diff} дн.`, status: 'overdue' };
+  if (diff === 0) return { text: 'Сегодня', status: 'today' };
+  if (diff === 1) return { text: 'Завтра', status: 'soon' };
+  if (diff <= 7) return { text: `Через ${diff} дн.`, status: 'soon' };
   return { text: formatDate(iso), status: 'later' };
 }
 
 /**
  * How long ago a dated record happened, in the coarse units people use for
- * "when did we last talk": "today" / "yesterday" / "5d ago" / "3w ago" /
- * "4mo ago". Future dates read as today.
+ * "when did we last talk": "сегодня" / "вчера" / "5 дн. назад" /
+ * "3 нед. назад" / "4 мес. назад". Future dates read as today.
  */
 export function sinceLabel(iso, today = todayISO()) {
   const days = Math.max(0, daysBetween(iso, today));
-  if (days === 0) return { text: 'today', days };
-  if (days === 1) return { text: 'yesterday', days };
-  if (days < 14) return { text: `${days}d ago`, days };
-  if (days < 60) return { text: `${Math.round(days / 7)}w ago`, days };
-  return { text: `${Math.round(days / 30)}mo ago`, days };
+  if (days === 0) return { text: 'сегодня', days };
+  if (days === 1) return { text: 'вчера', days };
+  if (days < 14) return { text: `${days} дн. назад`, days };
+  if (days < 60) return { text: `${Math.round(days / 7)} нед. назад`, days };
+  return { text: `${Math.round(days / 30)} мес. назад`, days };
 }
 
-/** "just now" / "5m ago" / "3h ago" / "Aug 12" for a timestamp. */
+/** "только что" / "5 мин назад" / "3 ч назад" / "12 авг" for a timestamp. */
 export function timeAgo(ts, now = Date.now()) {
   const s = Math.max(0, Math.floor((now - ts) / 1000));
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  if (s < 86400 * 7) return `${Math.floor(s / 86400)}d ago`;
+  if (s < 60) return 'только что';
+  if (s < 3600) return `${Math.floor(s / 60)} мин назад`;
+  if (s < 86400) return `${Math.floor(s / 3600)} ч назад`;
+  if (s < 86400 * 7) return `${Math.floor(s / 86400)} дн. назад`;
   return formatDate(todayISO(new Date(ts)));
 }
 
-/* Money is pinned to en-US formatting: the UI (and the K/M suffixes below)
-   is English, and pinning keeps symbols identical on every device. */
-const MONEY_LOCALE = 'en-US';
+/* Money is pinned to ru-RU formatting so symbols and separators are the
+   same on every device: "12 500 ₽". */
+const MONEY_LOCALE = 'ru-RU';
 
 /**
- * Full currency amount: formatMoney(12500, 'USD') → "$12,500".
- * Round numbers lose the ".00"; anything with cents keeps both digits, so
- * a deal worth 12500.50 never reads as "$12,500.5".
+ * Full currency amount: formatMoney(12500, 'RUB') → "12 500 ₽".
+ * Round numbers lose the ",00"; anything with kopecks keeps both digits.
  */
-export function formatMoney(amount, currency = 'USD') {
+export function formatMoney(amount, currency = 'RUB') {
   const n = Number(amount) || 0;
   const digits = Number.isInteger(n) ? 0 : 2;
   try {
@@ -169,8 +186,8 @@ export function formatMoney(amount, currency = 'USD') {
   }
 }
 
-/** Compact currency for stat tiles and chart labels: "$4.2M", "$18.5K", "$950". */
-export function compactMoney(amount, currency = 'USD') {
+/** Compact currency for stat tiles and chart labels: "4,2 млн ₽", "18,5 тыс. ₽", "950 ₽". */
+export function compactMoney(amount, currency = 'RUB') {
   const n = Number(amount) || 0;
   const abs = Math.abs(n);
   const sym = symbolOf(currency);
@@ -179,20 +196,20 @@ export function compactMoney(amount, currency = 'USD') {
   // own unit. The ladder has to reach a billion: a currency that trades at
   // a hundred or more to the dollar puts an ordinary book of business past
   // it, and the pipeline total read "¥1234.6M" instead of "¥1.2B".
-  if (abs >= 999_950_000) return `${sign}${sym}${trim1(abs / 1e9)}B`;
-  if (abs >= 999_950) return `${sign}${sym}${trim1(abs / 1e6)}M`;
-  if (abs >= 10000) return `${sign}${sym}${trim1(abs / 1000)}K`;
-  return `${sign}${sym}${abs.toLocaleString(MONEY_LOCALE, { maximumFractionDigits: 0 })}`;
+  if (abs >= 999_950_000) return `${sign}${trim1(abs / 1e9)} млрд ${sym}`;
+  if (abs >= 999_950) return `${sign}${trim1(abs / 1e6)} млн ${sym}`;
+  if (abs >= 10000) return `${sign}${trim1(abs / 1000)} тыс. ${sym}`;
+  return `${sign}${abs.toLocaleString(MONEY_LOCALE, { maximumFractionDigits: 0 })} ${sym}`;
 }
 
-const trim1 = (n) => (Math.round(n * 10) / 10).toString();
+const trim1 = (n) => (Math.round(n * 10) / 10).toString().replace('.', ',');
 
 function symbolOf(currency) {
   try {
     const parts = new Intl.NumberFormat(MONEY_LOCALE, { style: 'currency', currency }).formatToParts(1);
-    return parts.find((p) => p.type === 'currency')?.value ?? `${currency} `;
+    return parts.find((p) => p.type === 'currency')?.value ?? currency;
   } catch {
-    return `${currency} `;
+    return currency;
   }
 }
 

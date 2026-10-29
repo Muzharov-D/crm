@@ -62,7 +62,7 @@ export function settingsView() {
   const themeGroup = el('div.seg-group', { role: 'group', 'aria-label': 'Theme' });
   function renderThemes() {
     clear(themeGroup);
-    const current = store.settings.theme || 'system';
+    const current = store.settings.theme || 'light';
     for (const t of THEMES) {
       themeGroup.append(el('button.seg', {
         type: 'button',
@@ -809,7 +809,7 @@ export function settingsView() {
    * or it shows the previous account's thresholds until the next reload.
    */
   function syncSettingsUI() {
-    applyTheme(store.settings.theme || 'system');
+    applyTheme(store.settings.theme || 'light');
     renderThemes();
     renderStageRows();
     renderFieldKinds();

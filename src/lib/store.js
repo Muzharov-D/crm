@@ -128,8 +128,8 @@ export const LEAD_SOURCES = [
 export { ACTIVITY_TYPES, activityTypeInfo } from './statuses.js';
 
 const DEFAULT_SETTINGS = {
-  currency: 'USD',
-  theme: 'system',
+  currency: 'RUB',
+  theme: 'light',
   onboarded: false,
   sampleData: false,
   // Per-stage win-probability overrides ({ qualified: 0.3, ... }); stage

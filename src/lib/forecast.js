@@ -16,16 +16,16 @@ import { contractValue, billingSpread, isRecurring } from './recurring.js';
 
 /** Won and lost are terminal: always last, always pinned to 1/0. */
 export const TERMINAL_STAGES = [
-  { id: 'won', label: 'Won', probability: 1 },
-  { id: 'lost', label: 'Lost', probability: 0 },
+  { id: 'won', label: 'Выиграна', probability: 1 },
+  { id: 'lost', label: 'Проиграна', probability: 0 },
 ];
 
 /** The out-of-the-box funnel, used until the user configures their own. */
 export const DEFAULT_OPEN_STAGES = [
-  { id: 'new', label: 'New', probability: 0.1 },
-  { id: 'qualified', label: 'Qualified', probability: 0.25 },
-  { id: 'proposal', label: 'Proposal', probability: 0.5 },
-  { id: 'negotiation', label: 'Negotiation', probability: 0.75 },
+  { id: 'new', label: 'Новая', probability: 0.1 },
+  { id: 'qualified', label: 'Квалификация', probability: 0.25 },
+  { id: 'proposal', label: 'Предложение', probability: 0.5 },
+  { id: 'negotiation', label: 'Переговоры', probability: 0.75 },
 ];
 
 /** Default stage list. Runtime code uses store.stages() - the configured one. */
