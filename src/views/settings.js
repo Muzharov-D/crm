@@ -1442,7 +1442,7 @@ export function settingsView() {
 
   root.append(
     pageHead('Настройки'),
-    readOnly && el('p.page-sub', {}, 'Вы вошли как наблюдатель. Настройки и данные доступны только для просмотра; экспорт и выход из аккаунта по-прежнему работают.'),
+    readOnly ? el('p.page-sub', {}, 'Вы вошли как наблюдатель. Настройки и данные доступны только для просмотра; экспорт и выход из аккаунта по-прежнему работают.') : null,
     section('Оформление', null,
       el('div.settings-body', {},
         el('div.field', {},
@@ -1465,16 +1465,12 @@ export function settingsView() {
         el('p.settings-note', {}, 'Модель АБР использует факты из карточки сделки: команду клиента, экономического покупателя, сторонника, внешний срок, вложения клиента, бюджет и тип закупки. Запись с «?» засчитывается как половина факта.')
       )
     ),
-    section('Этапы воронки',
-      el('button.btn.btn-ghost.btn-sm', {
-        onclick: () => saveStages(ABR_OPEN_STAGES.map((s) => ({ ...s })), {
-          remap: { new: 's1', qualified: 's2', proposal: 's5', negotiation: 's7' },
-          message: 'Воронка АБР применена',
-        }),
-      }, 'Применить АБР'),
+    section('Этапы воронки', null,
       el('div.settings-body', {},
-        el('p.settings-note', {}, 'Ваша воронка по порядку. Переименуйте, переставьте, добавьте или удалите этапы, чтобы они совпадали с тем, как вы продаёте на самом деле. Процент — вероятность выиграть сделку на этом этапе; прогноз умножает на него суммы сделок.'),
-        stageRows
+        el('p.settings-note', {}, 'По ТЗ v2.1 используется единая воронка S1–S10. Статус, категория вероятности и исход сделки независимы от стадии.'),
+        el('div.settings-list', {}, store.stages().map((stage) => el('div.settings-row.static', {},
+          el('strong', {}, stage.label), el('div.grow'),
+          el('span.muted', {}, stage.probability === null ? 'Вероятность не задана' : `${Math.round(stage.probability * 100)}%`))))
       )
     ),
     section('Свои поля', null,

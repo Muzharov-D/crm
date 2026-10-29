@@ -37,7 +37,8 @@ export const MAX_DEAL_CONTACTS = 8;
 
 /** A well-formed role, or '' for "no role given". */
 export function normalizeRole(value) {
-  return ROLE_IDS.has(value) ? value : '';
+  // Roles are dictionary-managed in MVP v2.1; legacy ids remain valid values.
+  return String(value ?? '').trim().slice(0, 120);
 }
 
 export function roleLabel(role) {
@@ -56,20 +57,20 @@ export function roleLabel(role) {
 export function normalizeDealContacts(raw, primaryId = null) {
   const out = [];
   const seen = new Set();
-  const push = (contactId, role) => {
+  const push = (contactId, role, influence = '') => {
     if (typeof contactId !== 'string' || !contactId || seen.has(contactId)) return;
     seen.add(contactId);
-    out.push({ contactId, role: normalizeRole(role) });
+    out.push({ contactId, role: normalizeRole(role), influence: String(influence ?? '').trim() });
   };
   for (const entry of Array.isArray(raw) ? raw : []) {
     if (typeof entry === 'string') push(entry, '');
-    else if (entry && typeof entry === 'object') push(entry.contactId, entry.role);
+    else if (entry && typeof entry === 'object') push(entry.contactId, entry.role, entry.influence);
   }
   const primary = typeof primaryId === 'string' && primaryId ? primaryId : null;
   if (primary) {
     const at = out.findIndex((e) => e.contactId === primary);
     if (at > 0) out.unshift(...out.splice(at, 1));
-    else if (at < 0) out.unshift({ contactId: primary, role: '' });
+    else if (at < 0) out.unshift({ contactId: primary, role: '', influence: '' });
   }
   return out.slice(0, MAX_DEAL_CONTACTS);
 }
@@ -104,7 +105,7 @@ export function replacePrimary(list, contactId) {
   const rest = entries.slice(1).filter((e) => e?.contactId !== contactId);
   if (!contactId) return rest;
   const existing = entries.find((e) => e?.contactId === contactId);
-  return [{ contactId, role: normalizeRole(existing?.role) }, ...rest];
+  return [{ contactId, role: normalizeRole(existing?.role), influence: String(existing?.influence ?? '') }, ...rest];
 }
 
 /** The list without a contact - what deleting that contact leaves behind. */
@@ -132,6 +133,7 @@ export function repointContact(list, fromId, toId) {
     out.push({
       contactId: id,
       role: id === toId ? normalizeRole(survivorRole || mergedRole) : normalizeRole(entry.role),
+      influence: String(entry.influence ?? ''),
     });
   }
   return out;
@@ -142,5 +144,5 @@ export function withContact(list, contactId, role = '') {
   const entries = Array.isArray(list) ? list : [];
   if (!contactId || entries.some((e) => e?.contactId === contactId)) return entries;
   if (entries.length >= MAX_DEAL_CONTACTS) return entries;
-  return [...entries, { contactId, role: normalizeRole(role) }];
+  return [...entries, { contactId, role: normalizeRole(role), influence: '' }];
 }

@@ -14,7 +14,7 @@ import {
 import {
   pageHead, emptyState, statTile, taskRow, activityRow, section, stageBadge, avatar,
 } from '../ui/bits.js';
-import { openContactForm, openDealForm, openTaskForm, openActivityForm } from '../ui/forms.js';
+import { openContactForm, openDealForm, openTaskForm, openActivityForm } from '../ui/mvp-forms.js';
 import { openOnboarding } from '../ui/onboarding.js';
 import { forecastModeLabel } from '../lib/qualification.js';
 
@@ -45,7 +45,7 @@ function greeting() {
 function coldRow({ contact, lastAt }) {
   return el('div.cold-row', {},
     avatar(contact.name),
-    el('a.grow.min0', { href: `#/leads?id=${contact.id}` },
+    el('a.grow.min0', { href: `#/contacts?id=${contact.id}` },
       el('div.person-name', {}, contact.name),
       el('div.person-sub', {}, lastAt
         ? `Последнее касание ${sinceLabel(lastAt).text}`
@@ -272,7 +272,7 @@ export function dashboardView() {
       /* Going cold: the risk nobody scheduled. Needs attention covers what
          you promised to do; this covers what you forgot to. */
       (cold.length > 0 || nextless.length > 0) && section('Остывают',
-        el('a.btn.btn-ghost.btn-sm', { href: '#/leads' }, 'Все контакты'),
+        el('a.btn.btn-ghost.btn-sm', { href: '#/contacts' }, 'Все контакты'),
         cold.length > 0 && el('div.cold-list', {}, cold.map((r) => coldRow(r))),
         nextless.length > 0 && el('div.upnext', {},
           el('span.upnext-label', {}, 'Открытые сделки без следующего шага'),

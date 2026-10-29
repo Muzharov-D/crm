@@ -10,7 +10,7 @@ import { openModal } from './modal.js';
 import { toast } from './toast.js';
 import { store } from '../lib/store.js';
 import { sampleDataset } from '../lib/sample.js';
-import { openContactForm } from './forms.js';
+import { openContactForm } from './mvp-forms.js';
 
 const CURRENCIES = [
   { code: 'RUB', name: 'Российский рубль' },

@@ -7,6 +7,13 @@ const COLLECTIONS = {
   'crm:companies:v1': ['компания', 'компании'],
   'crm:contacts:v1': ['контакт', 'контакты'],
   'crm:deals:v1': ['сделка', 'сделки'],
+  'crm:employees:v1': ['сотрудник', 'сотрудники'],
+  'crm:leads:v1': ['лид', 'лиды'],
+  'crm:payments:v1': ['платёж', 'платежи'],
+  'crm:company-team:v1': ['участник команды', 'команда контрагента'],
+  'crm:sales-team:v1': ['участник продаж', 'команда продаж'],
+  'crm:deal-stage-history:v1': ['запись стадии сделки', 'журнал стадий сделок'],
+  'crm:lead-stage-history:v1': ['запись стадии лида', 'журнал стадий лидов'],
   'crm:activities:v1': ['запись', 'записи'],
   'crm:tasks:v1': ['задача', 'задачи'],
   'crm:templates:v1': ['шаблон', 'шаблоны'],
@@ -20,6 +27,8 @@ const FIELD_LABELS = {
   contactId: 'контакт', companyId: 'компания', notes: 'заметки', tags: 'метки',
   qualification: 'квалификация АБР', confidence: 'уверенность', due: 'срок',
   done: 'выполнение', title: 'заголовок', email: 'email', phone: 'телефон',
+  inn: 'ИНН', role: 'роль', status: 'статус', outcome: 'исход', employeeId: 'сотрудник',
+  product: 'продукт', subproduct: 'подпродукт', amount: 'сумма без НДС', fiscalYear: 'финансовый год',
   forecastMode: 'режим прогноза', stages: 'этапы воронки', currency: 'валюта',
 };
 

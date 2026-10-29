@@ -54,7 +54,7 @@ describe('sampleDataset', () => {
     const valid = new Set(STAGES.map((s) => s.id));
     for (const d of data.deals) {
       expect(valid.has(d.stage)).toBe(true);
-      if (d.stage === 'won' || d.stage === 'lost') {
+      if (d.outcome) {
         expect(d.closedAt).toBeTypeOf('number');
       } else {
         expect(d.closedAt).toBeNull();
@@ -63,10 +63,9 @@ describe('sampleDataset', () => {
   });
 
   it('covers the full pipeline: open, won, and lost deals', () => {
-    const stages = new Set(data.deals.map((d) => d.stage));
-    expect(stages.has('won')).toBe(true);
-    expect(stages.has('lost')).toBe(true);
-    expect(data.deals.some((d) => d.stage !== 'won' && d.stage !== 'lost')).toBe(true);
+    expect(data.deals.some((d) => d.outcome === 'Выиграна')).toBe(true);
+    expect(data.deals.some((d) => d.outcome === 'Проиграна')).toBe(true);
+    expect(data.deals.some((d) => !d.outcome)).toBe(true);
   });
 
   it('gives every open deal a future-facing forecast (value + close date)', () => {

@@ -8,13 +8,16 @@ import { wipeSampleData } from '../lib/sample.js';
 import { openOnboarding } from './onboarding.js';
 import { openPalette, installPaletteShortcut } from './palette.js';
 import { offlineIndicator } from './offline.js';
-import { openDealForm, openContactForm, openActivityForm, openTaskForm } from './forms.js';
+import { openDealForm, openContactForm, openActivityForm, openTaskForm, openLeadForm, openCompanyForm } from './mvp-forms.js';
 import { dashboardView } from '../views/dashboard.js';
-import { pipelineView } from '../views/pipeline.js';
-import { leadsView } from '../views/leads.js';
-import { companiesView } from '../views/companies.js';
-import { followupsView } from '../views/followups.js';
-import { forecastView } from '../views/forecast.js';
+import { pipelineMvpView } from '../views/pipeline-mvp.js';
+import { contactsMvpView } from '../views/contacts-mvp.js';
+import { leadsMvpView } from '../views/leads-mvp.js';
+import { employeesView } from '../views/employees.js';
+import { dictionariesView } from '../views/dictionaries.js';
+import { companiesMvpView } from '../views/companies-mvp.js';
+import { tasksMvpView } from '../views/tasks-mvp.js';
+import { reportsView } from '../views/reports.js';
 import { activityView } from '../views/activity.js';
 import { settingsView, confirmSignOut } from '../views/settings.js';
 import { auditView } from '../views/audit.js';
@@ -25,13 +28,16 @@ import { canWrite, roleLabel } from '../lib/access.js';
    everything. */
 const ROUTES = [
   { hash: '#/', label: 'Главная', icon: 'dashboard', view: dashboardView },
-  { hash: '#/pipeline', label: 'Воронка', icon: 'pipeline', view: pipelineView },
-  { hash: '#/leads', label: 'Контакты', icon: 'users', view: leadsView },
-  { hash: '#/followups', label: 'Задачи', icon: 'followups', view: followupsView },
-  { hash: '#/companies', label: 'Компании', icon: 'company', view: companiesView, tab: false },
+  { hash: '#/pipeline', label: 'Сделки', icon: 'pipeline', view: pipelineMvpView },
+  { hash: '#/leads', label: 'Лиды', icon: 'target', view: leadsMvpView },
+  { hash: '#/followups', label: 'Задачи', icon: 'followups', view: tasksMvpView },
+  { hash: '#/contacts', label: 'Контакты', icon: 'users', view: contactsMvpView, tab: false },
+  { hash: '#/companies', label: 'Контрагенты', icon: 'company', view: companiesMvpView, tab: false },
+  { hash: '#/employees', label: 'Сотрудники', icon: 'briefcase', view: employeesView, tab: false },
   { hash: '#/activity', label: 'История', icon: 'video', view: activityView, tab: false },
   { hash: '#/audit', label: 'Журнал', icon: 'listChecks', view: auditView, tab: false, admin: true },
-  { hash: '#/forecast', label: 'Прогноз', icon: 'chart', view: forecastView, tab: false },
+  { hash: '#/forecast', label: 'Отчётность', icon: 'chart', view: reportsView, tab: false },
+  { hash: '#/dictionaries', label: 'Справочники', icon: 'listChecks', view: dictionariesView, tab: false },
   { hash: '#/settings', label: 'Настройки', icon: 'gear', view: settingsView, tab: false },
 ];
 
@@ -155,7 +161,9 @@ export function mountShell(appRoot) {
     const modal = openModal({
       title: 'Создать',
       content: el('div.settings-list', {},
-        entry('deal', 'Сделка', 'Возможность, которая пойдёт по воронке', () => openDealForm()),
+        entry('deal', 'Сделка', 'Договор, участники, платежи и команда', () => openDealForm()),
+        entry('target', 'Лид', 'Обращение и квалификация L0–L5', () => openLeadForm()),
+        entry('company', 'Контрагент', 'Клиент, партнёр или конкурент', () => openCompanyForm()),
         entry('userPlus', 'Контакт', 'Человек, которому можно продать', () => openContactForm()),
         entry('video', 'Запись в историю', 'Встреча, звонок, письмо или заметка', () => openActivityForm()),
         entry('followups', 'Задача', 'Напоминание с датой, чтобы связаться', () => openTaskForm())

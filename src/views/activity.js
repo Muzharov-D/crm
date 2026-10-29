@@ -6,7 +6,7 @@ import {
   ACTIVITY_WINDOWS, matchesActivityWindow, touchProgress, weekRange,
 } from '../lib/activity.js';
 import { pageHead, emptyState, statTile, activityRow, searchBox } from '../ui/bits.js';
-import { openActivityForm } from '../ui/forms.js';
+import { openActivityForm } from '../ui/mvp-forms.js';
 
 /** How many rows one page of the log shows before "Show more". */
 const PAGE = 50;

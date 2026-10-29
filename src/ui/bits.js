@@ -145,7 +145,7 @@ export function chip(href, iconName, label) {
 
 export function contactChip(contactId) {
   const c = store.contactById(contactId);
-  return c ? chip(`#/leads?id=${c.id}`, 'user', c.name) : null;
+  return c ? chip(`#/contacts?id=${c.id}`, 'user', c.name) : null;
 }
 
 export function companyChip(companyId) {

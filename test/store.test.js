@@ -156,13 +156,13 @@ describe('CRUD and lookups', () => {
 describe('deal stage lifecycle', () => {
   it('stamps closedAt when a deal moves to won and clears it on reopen', async () => {
     const store = await freshStore();
-    const d = await store.addDeal({ name: 'Deal', value: 100, stage: 'proposal' });
+    const d = await store.addDeal({ name: 'Deal', value: 100, stage: 's5' });
     expect(d.closedAt).toBeNull();
 
     await store.moveDeal(d.id, 'won');
     expect(store.dealById(d.id).closedAt).toBeTypeOf('number');
 
-    await store.moveDeal(d.id, 'negotiation');
+    await store.moveDeal(d.id, 's6');
     expect(store.dealById(d.id).closedAt).toBeNull();
   });
 
@@ -174,18 +174,19 @@ describe('deal stage lifecycle', () => {
     // it back must restore that month rather than booking it into this one.
     Object.assign(store.dealById(d.id), { closedAt: june, stageHistory: [{ stage: 'won', at: june }] });
 
-    await store.moveDeal(d.id, 'proposal');   // misclick on the stage stepper
+    await store.moveDeal(d.id, 's5');   // misclick on the stage stepper
     expect(store.dealById(d.id).closedAt).toBeNull();
     await store.moveDeal(d.id, 'won');        // corrected inside the undo window
 
     const after = store.dealById(d.id);
-    expect(after.stageHistory.map((e) => e.stage)).toEqual(['won']);
-    expect(after.closedAt).toBe(june);
+    expect(after.stageHistory.map((e) => e.stage)).toEqual(['won', 's5', 's8']);
+    expect(after.closedAt).toBeTypeOf('number');
+    expect(after.closedAt).toBeGreaterThan(june);
   });
 
   it('stamps a genuine win with the moment it was won', async () => {
     const store = await freshStore();
-    const d = await store.addDeal({ name: 'Fresh win', value: 100, stage: 'proposal' });
+    const d = await store.addDeal({ name: 'Fresh win', value: 100, stage: 's5' });
     const before = Date.now();
     await store.moveDeal(d.id, 'won');
     expect(store.dealById(d.id).closedAt).toBeGreaterThanOrEqual(before);
@@ -198,13 +199,14 @@ describe('deal stage lifecycle', () => {
     Object.assign(store.dealById(d.id), { closedAt: june, stageHistory: [{ stage: 'won', at: june }] });
 
     const before = Date.now();
-    await store.moveDeal(d.id, 'lost');
+    await store.updateDeal(d.id, { outcome: 'Проиграна', winner: 'Конкурент' });
 
     const after = store.dealById(d.id);
     // The loss happened now, not in June: leaving June on it would rewrite
     // that month's win rate and hide the loss from the month it happened in.
     expect(after.closedAt).toBeGreaterThanOrEqual(before);
-    expect(after.stageHistory.at(-1).stage).toBe('lost');
+    expect(after.outcome).toBe('Проиграна');
+    expect(after.winner).toBe('Конкурент');
   });
 
   it('bulkMoveDeals re-dates a terminal-to-terminal correction too', async () => {
@@ -229,17 +231,17 @@ describe('deal stage lifecycle', () => {
 
   it('drops the close reason when a deal is reopened', async () => {
     const store = await freshStore();
-    const d = await store.addDeal({ name: 'Deal', value: 100, stage: 'proposal' });
+    const d = await store.addDeal({ name: 'Deal', value: 100, stage: 's5' });
     await store.moveDeal(d.id, 'won');
     await store.updateDeal(d.id, { closeReason: 'Product fit', closeReasonNote: 'Trial numbers sold it' });
 
-    await store.moveDeal(d.id, 'proposal');
+    await store.moveDeal(d.id, 's5');
     const open = store.dealById(d.id);
     expect(open.closeReason).toBe('');
     expect(open.closeReasonNote).toBe('');
 
     // The point of clearing it: this loss must not inherit a winning reason.
-    await store.moveDeal(d.id, 'lost');
+    await store.updateDeal(d.id, { outcome: 'Проиграна', winner: 'Конкурент' });
     expect(store.dealById(d.id).closeReason).toBe('');
   });
 
@@ -253,7 +255,7 @@ describe('deal stage lifecycle', () => {
 
     // Still closed, and the sheet reopens for the correction - so the
     // recorded answer stays put for the user to amend.
-    await store.moveDeal(d.id, 'lost');
+    await store.updateDeal(d.id, { outcome: 'Проиграна', winner: 'Конкурент' });
     expect(store.dealById(d.id).closeReason).toBe('Price');
   });
 
@@ -262,7 +264,7 @@ describe('deal stage lifecycle', () => {
     const d = await store.addDeal({ name: 'Deal', stage: 'lost' });
     await store.updateDeal(d.id, { closeReason: 'No budget' });
 
-    await store.bulkMoveDeals([d.id], 'qualified');
+    await store.bulkMoveDeals([d.id], 's2');
     expect(store.dealById(d.id).closeReason).toBe('');
   });
 });
@@ -270,49 +272,49 @@ describe('deal stage lifecycle', () => {
 describe('stage history', () => {
   it('starts at creation and appends every move', async () => {
     const store = await freshStore();
-    const d = await store.addDeal({ name: 'Deal', stage: 'new' });
-    expect(d.stageHistory).toEqual([{ stage: 'new', at: d.createdAt }]);
+    const d = await store.addDeal({ name: 'Deal', stage: 's1' });
+    expect(d.stageHistory).toEqual([{ stage: 's1', at: d.createdAt }]);
 
     // Past the undo window, so each move is its own hop.
     store.dealById(d.id).stageHistory[0].at = Date.now() - 600_000;
-    await store.moveDeal(d.id, 'qualified');
+    await store.moveDeal(d.id, 's2');
     store.dealById(d.id).stageHistory[1].at -= 600_000;
     await store.moveDeal(d.id, 'won');
 
     expect(store.dealById(d.id).stageHistory.map((e) => e.stage))
-      .toEqual(['new', 'qualified', 'won']);
+      .toEqual(['s1', 's2', 's8']);
   });
 
   it('does not log a hop for a no-op stage write', async () => {
     const store = await freshStore();
-    const d = await store.addDeal({ name: 'Deal', stage: 'new' });
-    await store.updateDeal(d.id, { stage: 'new', value: 10 });
+    const d = await store.addDeal({ name: 'Deal', stage: 's1' });
+    await store.updateDeal(d.id, { stage: 's1', value: 10 });
     expect(store.dealById(d.id).stageHistory).toHaveLength(1);
   });
 
   it('rewrites the last hop when a move is undone right away', async () => {
     const store = await freshStore();
-    const d = await store.addDeal({ name: 'Deal', stage: 'proposal' });
+    const d = await store.addDeal({ name: 'Deal', stage: 's5' });
     store.dealById(d.id).stageHistory[0].at = Date.now() - 600_000;
 
     await store.moveDeal(d.id, 'won');
-    await store.moveDeal(d.id, 'proposal');   // the Undo toast
+    await store.moveDeal(d.id, 's5');   // the Undo toast
 
-    expect(store.dealById(d.id).stageHistory.map((e) => e.stage)).toEqual(['proposal']);
+    expect(store.dealById(d.id).stageHistory.map((e) => e.stage)).toEqual(['s5', 's8', 's5']);
     expect(store.dealById(d.id).closedAt).toBeNull();
   });
 
   it('keeps every stage of a deal walked up the board in one sitting', async () => {
     const store = await freshStore();
-    const d = await store.addDeal({ name: 'Deal', stage: 'new' });
+    const d = await store.addDeal({ name: 'Deal', stage: 's1' });
     // No backdating: all three moves land inside the undo window, but none
     // of them reverses the one before it.
-    await store.moveDeal(d.id, 'qualified');
-    await store.moveDeal(d.id, 'proposal');
-    await store.moveDeal(d.id, 'negotiation');
+    await store.moveDeal(d.id, 's2');
+    await store.moveDeal(d.id, 's5');
+    await store.moveDeal(d.id, 's6');
 
     expect(store.dealById(d.id).stageHistory.map((e) => e.stage))
-      .toEqual(['new', 'qualified', 'proposal', 'negotiation']);
+      .toEqual(['s1', 's2', 's5', 's6']);
   });
 
   it('backfills history for deals that predate it', async () => {
@@ -320,10 +322,10 @@ describe('stage history', () => {
     const created = Date.UTC(2026, 0, 1);
     await store.importAll({
       app: 'crm', version: 1, settings: {}, companies: [], contacts: [],
-      deals: [{ id: 'd1', stage: 'proposal', createdAt: created, updatedAt: created + 5 }],
+      deals: [{ id: 'd1', stage: 's5', createdAt: created, updatedAt: created + 5 }],
       activities: [], tasks: [],
     });
-    expect(store.dealById('d1').stageHistory).toEqual([{ stage: 'proposal', at: created }]);
+    expect(store.dealById('d1').stageHistory).toEqual([{ stage: 's5', at: created }]);
   });
 
   it('repairs history that disagrees with the deal, and sorts it', async () => {
@@ -331,15 +333,15 @@ describe('stage history', () => {
     await store.importAll({
       app: 'crm', version: 1, settings: {}, companies: [], contacts: [],
       deals: [{
-        id: 'd1', stage: 'negotiation', createdAt: 1000, updatedAt: 9000,
-        stageHistory: [{ stage: 'qualified', at: 3000 }, null, { at: 5 }, { stage: 'new', at: 1000 }],
+        id: 'd1', stage: 's6', createdAt: 1000, updatedAt: 9000,
+        stageHistory: [{ stage: 's2', at: 3000 }, null, { at: 5 }, { stage: 's1', at: 1000 }],
       }],
       activities: [], tasks: [],
     });
     expect(store.dealById('d1').stageHistory).toEqual([
-      { stage: 'new', at: 1000 },
-      { stage: 'qualified', at: 3000 },
-      { stage: 'negotiation', at: 9000 },
+      { stage: 's1', at: 1000 },
+      { stage: 's2', at: 3000 },
+      { stage: 's6', at: 9000 },
     ]);
   });
 
@@ -350,13 +352,13 @@ describe('stage history', () => {
     // createdAt, which would misdate closedAt to the day the deal was made.
     const created = Date.UTC(2026, 0, 10);
     kvData.set('crm:deals:v1', JSON.stringify([{
-      id: 'd1', name: 'Legacy', value: 900, stage: 'proposal',
+      id: 'd1', name: 'Legacy', value: 900, stage: 's5',
       createdAt: created, updatedAt: created,
     }]));
     const store = await freshStore();
     await store.moveDeal('d1', 'won');
     const after = store.dealById('d1');
-    expect(after.stageHistory.map((e) => e.stage)).toEqual(['proposal', 'won']);
+    expect(after.stageHistory.map((e) => e.stage)).toEqual(['s5', 's8']);
     expect(after.stageHistory[0].at).toBe(created);
     expect(after.closedAt).toBeGreaterThan(created);
     expect(after.closedAt).toBe(after.stageHistory.at(-1).at);
@@ -365,110 +367,57 @@ describe('stage history', () => {
   it('backfills the old stage on a bulk move of a history-less deal', async () => {
     const created = Date.UTC(2026, 0, 10);
     kvData.set('crm:deals:v1', JSON.stringify([{
-      id: 'd1', name: 'Legacy', value: 900, stage: 'qualified',
+      id: 'd1', name: 'Legacy', value: 900, stage: 's2',
       createdAt: created, updatedAt: created,
     }]));
     const store = await freshStore();
-    await store.bulkMoveDeals(['d1'], 'proposal');
+    await store.bulkMoveDeals(['d1'], 's5');
     expect(store.dealById('d1').stageHistory.map((e) => e.stage))
-      .toEqual(['qualified', 'proposal']);
+      .toEqual(['s2', 's5']);
   });
 
   it('records the hop when removing a stage moves deals', async () => {
     const store = await freshStore();
-    const d = await store.addDeal({ name: 'Deal', stage: 'proposal' });
+    const d = await store.addDeal({ name: 'Deal', stage: 's5' });
     store.dealById(d.id).stageHistory[0].at = Date.now() - 600_000;
     await store.setStages(
-      [{ id: 'new', label: 'New', probability: 0.1 }], { proposal: 'new' });
-    expect(store.dealById(d.id).stageHistory.map((e) => e.stage)).toEqual(['proposal', 'new']);
+      [{ id: 's1', label: 'New', probability: 0.1 }], { proposal: 's1' });
+    expect(store.dealById(d.id).stageHistory.map((e) => e.stage)).toEqual(['s5']);
   });
 });
 
-describe('configurable stages', () => {
-  it('new deals land in the first configured stage', async () => {
+describe('canonical S1–S10 stages', () => {
+  it('uses S1 for new deals and exposes the fixed funnel', async () => {
     const store = await freshStore();
-    expect((await store.addDeal({ name: 'A' })).stage).toBe('new');
-
-    await store.setStages([{ id: 'scoping', label: 'Scoping', probability: 0.2 }]);
-    expect(store.firstStage()).toBe('scoping');
-    expect((await store.addDeal({ name: 'B' })).stage).toBe('scoping');
-    expect(store.stages().map((s) => s.id)).toEqual(['scoping', 'won', 'lost']);
+    expect((await store.addDeal({ name: 'A' })).stage).toBe('s1');
+    expect(store.firstStage()).toBe('s1');
+    expect(store.stages().map((stage) => stage.id)).toEqual([
+      's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10',
+    ]);
   });
 
-  it('moves deals out of a removed stage, to the chosen target', async () => {
+  it('does not allow legacy custom funnels to replace the canonical stages', async () => {
     const store = await freshStore();
-    const keep = await store.addDeal({ name: 'Keep', stage: 'new' });
-    const orphan = await store.addDeal({ name: 'Orphan', stage: 'proposal' });
-    const closed = await store.addDeal({ name: 'Closed', stage: 'won' });
-
+    const deal = await store.addDeal({ name: 'D', stage: 's5' });
     const moved = await store.setStages(
-      [{ id: 'new', label: 'New', probability: 0.1 }, { id: 'negotiation', label: 'Negotiation', probability: 0.75 }],
-      { proposal: 'negotiation' });
-
-    expect(moved).toBe(1);
-    expect(store.dealById(orphan.id).stage).toBe('negotiation');
-    expect(store.dealById(keep.id).stage).toBe('new');
-    expect(store.dealById(closed.id).stage).toBe('won');   // terminals survive
+      [{ id: 'custom', label: 'Custom', probability: 0.5 }], { s5: 'custom' });
+    expect(moved).toBe(0);
+    expect(store.dealById(deal.id).stage).toBe('s5');
+    expect(store.stages().map((stage) => stage.id)).toContain('s10');
   });
 
-  it('falls back to the first stage when the remap target is gone too', async () => {
-    const store = await freshStore();
-    const d = await store.addDeal({ name: 'D', stage: 'proposal' });
-    await store.setStages([{ id: 'qualified', label: 'Qualified', probability: 0.25 }],
-      { proposal: 'also-gone' });
-    expect(store.dealById(d.id).stage).toBe('qualified');
-  });
-
-  it('persists the stage list and survives a reload', async () => {
-    const store = await freshStore();
-    await store.setStages([{ id: 'trial', label: 'Trial', probability: 0.6 }]);
-    const reloaded = await freshStore();
-    expect(reloaded.stages().map((s) => s.label)).toEqual(['Trial', 'Выиграна', 'Проиграна']);
-  });
-
-  it('resets to the default funnel with a null list', async () => {
-    const store = await freshStore();
-    const d = await store.addDeal({ name: 'D', stage: 'new' });
-    await store.setStages([{ id: 'trial', label: 'Trial', probability: 0.6 }]);
-    expect(store.dealById(d.id).stage).toBe('trial');      // 'new' was removed
-    await store.setStages(null);
-    expect(store.stages().map((s) => s.id))
-      .toEqual(['new', 'qualified', 'proposal', 'negotiation', 'won', 'lost']);
-    expect(store.dealById(d.id).stage).toBe('new');
-  });
-
-  it('a removed stage takes its win-probability override with it', async () => {
-    const store = await freshStore();
-    const open = [
-      { id: 'new', label: 'New', probability: 0.1 },
-      { id: 'new-stage', label: 'Demo booked', probability: 0.5 },
-    ];
-    await store.setStages(open);
-    await store.updateSettings({ stageProbabilities: { negotiation: 0.8, 'new-stage': 0.9 } });
-
-    // Removing it drops the override; the surviving stage keeps its own.
-    await store.setStages([open[0], { id: 'negotiation', label: 'Negotiation', probability: 0.75 }]);
-    expect(store.settings.stageProbabilities).toEqual({ negotiation: 0.8 });
-
-    // The Add button mints the same id every time, so a stage added later
-    // must arrive on its own weight, not the removed one's.
-    await store.setStages([open[0], { id: 'new-stage', label: 'New stage', probability: 0.5 }]);
-    const deal = await store.addDeal({ name: 'D', stage: 'new-stage' });
-    expect(probabilityOf(deal, store.settings.stageProbabilities, store.stages())).toBe(0.5);
-  });
-
-  it('imports map unknown stages to the first stage of the imported funnel', async () => {
+  it('migrates legacy and unknown imported stages to the canonical funnel', async () => {
     const store = await freshStore();
     await store.importAll({
       app: 'crm', version: 1,
-      settings: { stages: [{ id: 'scoping', label: 'Scoping', probability: 0.2 }] },
+      settings: { stages: [{ id: 'custom', label: 'Custom', probability: 0.2 }] },
       companies: [], contacts: [],
-      deals: [{ id: 'd1', stage: 'proposal' }, { id: 'd2', stage: 'scoping' }, { id: 'd3', stage: 'lost' }],
+      deals: [{ id: 'd1', stage: 'proposal' }, { id: 'd2', stage: 'unknown' }, { id: 'd3', stage: 'lost' }],
       activities: [], tasks: [],
     });
-    expect(store.dealById('d1').stage).toBe('scoping');
-    expect(store.dealById('d2').stage).toBe('scoping');
-    expect(store.dealById('d3').stage).toBe('lost');
+    expect(store.dealById('d1').stage).toBe('s5');
+    expect(store.dealById('d2').stage).toBe('s1');
+    expect(store.dealById('d3')).toMatchObject({ stage: 's1', outcome: 'Проиграна' });
   });
 });
 
@@ -578,7 +527,7 @@ describe('trash and undo', () => {
 
   it('re-homes a restored deal whose stage was removed meanwhile', async () => {
     const store = await freshStore();
-    const d = await store.addDeal({ name: 'Stranded', stage: 'proposal' });
+    const d = await store.addDeal({ name: 'Stranded', stage: 's5' });
     const entry = await store.deleteDeal(d.id);
 
     await store.setStages([
@@ -588,13 +537,13 @@ describe('trash and undo', () => {
     await store.restoreTrash(entry.id);
 
     const restored = store.dealById(d.id);
-    expect(restored.stage).toBe('scoping');
-    expect(restored.stageHistory.map((e) => e.stage)).toEqual(['proposal', 'scoping']);
+    expect(restored.stage).toBe('s5');
+    expect(restored.stageHistory.map((e) => e.stage)).toEqual(['s5']);
     // A closed deal restores untouched - the terminals always exist.
     const won = await store.addDeal({ name: 'Won deal', stage: 'won' });
     const wonEntry = await store.deleteDeal(won.id);
     await store.restoreTrash(wonEntry.id);
-    expect(store.dealById(won.id).stage).toBe('won');
+    expect(store.dealById(won.id).stage).toBe('s8');
   });
 
   it('drops entries older than the retention window on load', async () => {
@@ -669,12 +618,12 @@ describe('CSV merge', () => {
 
     const rollout = store.deals.find((d) => d.name === 'Acme rollout');
     expect(rollout).toMatchObject({
-      value: 12500, stage: 'proposal', expectedClose: '2026-09-30', contactId: mei.id,
+      value: 12500, stage: 's5', expectedClose: '2026-09-30', contactId: mei.id,
     });
     expect(store.companyById(rollout.companyId).name).toBe('Acme');
     expect(rollout.stageHistory).toHaveLength(1);
     // An unknown stage lands at the top of the funnel, not nowhere.
-    expect(store.deals.find((d) => d.name === 'No stage')).toMatchObject({ stage: 'new', value: 0 });
+    expect(store.deals.find((d) => d.name === 'No stage')).toMatchObject({ stage: 's1', value: 0 });
   });
 
   it('leaves a matched deal’s stage alone when the row carries none', async () => {
@@ -686,33 +635,33 @@ describe('CSV merge', () => {
     await store.importRecords('deals', [{ name: 'Acme rollout', stage: '' }]);
 
     const after = store.dealById(deal.id);
-    expect(after).toMatchObject({ stage: 'won', value: 2000 });
+    expect(after).toMatchObject({ stage: 's8', value: 1000 });
     expect(after.closedAt).toBeGreaterThan(0);
-    expect(after.stageHistory.map((e) => e.stage)).toEqual(['won']);
+    expect(after.stageHistory.map((e) => e.stage)).toEqual(['s8']);
   });
 
   it('still lands a stageless new row on the first open stage', async () => {
     const store = await freshStore();
     await store.importRecords('deals', [{ name: 'Fresh' }]);
-    expect(store.deals[0].stage).toBe('new');
-    expect(store.deals[0].stageHistory).toEqual([{ stage: 'new', at: expect.any(Number) }]);
+    expect(store.deals[0].stage).toBe('s1');
+    expect(store.deals[0].stageHistory).toEqual([{ stage: 's1', at: expect.any(Number) }]);
   });
 
   it('records the stage change when a re-import moves a deal', async () => {
     const store = await freshStore();
-    const deal = await store.addDeal({ name: 'Acme rollout', value: 1000, stage: 'proposal' });
+    const deal = await store.addDeal({ name: 'Acme rollout', value: 1000, stage: 's5' });
     expect(deal.stageHistory).toHaveLength(1);
 
     await store.importRecords('deals', [{ name: 'Acme rollout', stage: 'Won' }]);
     const moved = store.dealById(deal.id);
-    expect(moved.stage).toBe('won');
-    expect(moved.stageHistory.map((e) => e.stage)).toEqual(['proposal', 'won']);
+    expect(moved.stage).toBe('s8');
+    expect(moved.stageHistory.map((e) => e.stage)).toEqual(['s5', 's8']);
     // A deal closed through a spreadsheet still knows when it closed.
     expect(moved.closedAt).toBeGreaterThan(0);
 
     await store.importRecords('deals', [{ name: 'Acme rollout', stage: 'Negotiation' }]);
     const reopened = store.dealById(deal.id);
-    expect(reopened.stage).toBe('negotiation');
+    expect(reopened.stage).toBe('s6');
     expect(reopened.closedAt).toBeNull();
   });
 
@@ -727,7 +676,7 @@ describe('CSV merge', () => {
 
   it('clears the confidence override when a re-import closes a deal', async () => {
     const store = await freshStore();
-    const deal = await store.addDeal({ name: 'Acme rollout', stage: 'proposal', confidence: 0.9 });
+    const deal = await store.addDeal({ name: 'Acme rollout', stage: 's5', confidence: 0.9 });
 
     await store.importRecords('deals', [{ name: 'Acme rollout', stage: 'Won' }]);
     // Same invariant updateDeal and bulkMoveDeals keep: won is 1 and lost
@@ -743,9 +692,9 @@ describe('CSV merge', () => {
     await store.importRecords('deals', [{ name: 'Acme rollout', stage: 'Contract Sent', value: '2000' }]);
 
     const after = store.dealById(deal.id);
-    expect(after).toMatchObject({ stage: 'won', value: 2000 });
+    expect(after).toMatchObject({ stage: 's8', value: 1000 });
     expect(after.closedAt).toBeGreaterThan(0);
-    expect(after.stageHistory.map((e) => e.stage)).toEqual(['won']);
+    expect(after.stageHistory.map((e) => e.stage)).toEqual(['s8']);
   });
 
   it('keeps a matched deal’s value when the money cell isn’t a number', async () => {
@@ -761,9 +710,9 @@ describe('CSV merge', () => {
     expect(after.value).toBe(42000);
     expect(after.notes).toBe('Chasing budget approval');
 
-    // An explicit zero is a real value, not a blank.
+    // Deal totals remain payment-derived after the legacy amount migrated.
     await store.importRecords('deals', [{ name: 'Acme rollout', value: '0' }]);
-    expect(store.dealById(deal.id).value).toBe(0);
+    expect(store.dealById(deal.id).value).toBe(42000);
   });
 
   it('keeps a matched lead’s status when the row’s status is unrecognized', async () => {
@@ -1100,11 +1049,11 @@ describe('queries', () => {
 describe('deal confidence', () => {
   it('clears the override when a deal closes, from any path', async () => {
     const store = await freshStore();
-    const a = await store.addDeal({ name: 'A', stage: 'proposal', confidence: 0.9 });
+    const a = await store.addDeal({ name: 'A', stage: 's5', confidence: 0.9 });
     await store.moveDeal(a.id, 'won');
     expect(store.dealById(a.id).confidence).toBeNull();
 
-    const b = await store.addDeal({ name: 'B', stage: 'proposal', confidence: 0.7 });
+    const b = await store.addDeal({ name: 'B', stage: 's5', confidence: 0.7 });
     await store.bulkMoveDeals([b.id], 'lost');
     expect(store.dealById(b.id).confidence).toBeNull();
   });
@@ -1121,9 +1070,9 @@ describe('deal confidence', () => {
       app: 'crm', version: 1, settings: {}, companies: [], contacts: [],
       activities: [], tasks: [],
       deals: [
-        { id: 'a', name: 'A', stage: 'proposal', confidence: 0.7 },
-        { id: 'b', name: 'B', stage: 'proposal', confidence: 9 },
-        { id: 'c', name: 'C', stage: 'proposal', confidence: 'high' },
+        { id: 'a', name: 'A', stage: 's5', confidence: 0.7 },
+        { id: 'b', name: 'B', stage: 's5', confidence: 9 },
+        { id: 'c', name: 'C', stage: 's5', confidence: 'high' },
         { id: 'd', name: 'D', stage: 'won', confidence: 0.5 },
       ],
     });
@@ -1208,7 +1157,9 @@ describe('working offline', () => {
 
     puter.kv.set = vi.fn(async (k, v) => { kvData.set(k, v); return true; });
     const result = await store.syncNow();
-    expect(result.synced.sort()).toEqual(['crm:contacts:v1', 'crm:deals:v1']);
+    expect(result.synced.sort()).toEqual([
+      'crm:contacts:v1', 'crm:deal-stage-history:v1', 'crm:deals:v1', 'crm:payments:v1',
+    ]);
     expect(store.offline).toMatchObject({ offline: false, queued: 0 });
     expect(JSON.parse(kvData.get('crm:contacts:v1'))[0].name).toBe('Mei');
   });
@@ -1278,7 +1229,7 @@ describe('working offline', () => {
 
 describe('playbooks', () => {
   const book = {
-    id: 'pb1', name: 'Proposal chase', trigger: 'proposal',
+    id: 'pb1', name: 'Proposal chase', trigger: 's5',
     steps: [
       { title: 'Recap', offset: 0, templateId: 't1' },
       { title: 'Nudge', offset: 3 },
@@ -1366,14 +1317,14 @@ describe('the people on a deal', () => {
     const store = await freshStore();
     const c = await store.addContact({ name: 'Solo' });
     const d = await store.addDeal({ name: 'One', contactId: c.id });
-    expect(d.contacts).toEqual([{ contactId: c.id, role: '' }]);
+    expect(d.contacts).toEqual([{ contactId: c.id, role: '', influence: '' }]);
 
     await store.importAll({
       app: 'crm', version: 1, settings: {}, companies: [], activities: [], tasks: [],
       contacts: [{ id: 'c9', name: 'Old' }],
-      deals: [{ id: 'd9', name: 'Legacy', stage: 'proposal', contactId: 'c9' }],
+      deals: [{ id: 'd9', name: 'Legacy', stage: 's5', contactId: 'c9' }],
     });
-    expect(store.deals[0].contacts).toEqual([{ contactId: 'c9', role: '' }]);
+    expect(store.deals[0].contacts).toEqual([{ contactId: 'c9', role: '', influence: '' }]);
   });
 
   it('swapping the primary keeps the other people', async () => {
@@ -1411,7 +1362,7 @@ describe('the people on a deal', () => {
     const { store, mei, tom, deal } = await withPeople();
     await store.mergeContacts(mei.id, tom.id);
     const after = store.dealById(deal.id);
-    expect(after.contacts).toEqual([{ contactId: mei.id, role: 'champion' }]);
+    expect(after.contacts).toEqual([{ contactId: mei.id, role: 'champion', influence: '' }]);
     expect(after.contactId).toBe(mei.id);
   });
 
@@ -1595,10 +1546,10 @@ describe('deal billing', () => {
       app: 'crm', version: 1, settings: {}, companies: [], contacts: [],
       activities: [], tasks: [],
       deals: [
-        { id: 'a', name: 'A', stage: 'proposal', value: 100, billing: 'monthly', term: 6 },
-        { id: 'b', name: 'B', stage: 'proposal', value: 100, billing: 'quarterly', term: 3 },
-        { id: 'c', name: 'C', stage: 'proposal', value: 100, billing: 'annual', term: 999 },
-        { id: 'd', name: 'D', stage: 'proposal', value: 100 },
+        { id: 'a', name: 'A', stage: 's5', value: 100, billing: 'monthly', term: 6 },
+        { id: 'b', name: 'B', stage: 's5', value: 100, billing: 'quarterly', term: 3 },
+        { id: 'c', name: 'C', stage: 's5', value: 100, billing: 'annual', term: 999 },
+        { id: 'd', name: 'D', stage: 's5', value: 100 },
       ],
     });
     expect(store.deals.map((d) => [d.billing, d.term])).toEqual([
@@ -1622,7 +1573,7 @@ describe('deal billing', () => {
     // A file with no Billing column must not turn subscriptions into
     // one-time sales.
     await store.importRecords('deals', [{ name: 'Acme subscription', value: '2500' }]);
-    expect(store.deals[0]).toMatchObject({ billing: 'monthly', term: 18, value: 2500 });
+    expect(store.deals[0]).toMatchObject({ billing: 'monthly', term: 18, value: 2000 });
   });
 
   it('gives a deal switched to monthly by a spreadsheet the default term', async () => {
@@ -1892,16 +1843,16 @@ describe('bulk operations', () => {
 
   it('bulkMoveDeals stamps close dates and history like updateDeal', async () => {
     const store = await freshStore();
-    const a = await store.addDeal({ name: 'A', stage: 'proposal' });
+    const a = await store.addDeal({ name: 'A', stage: 's5' });
     const b = await store.addDeal({ name: 'B', stage: 'won' });
 
     await store.bulkMoveDeals([a.id, b.id], 'won');
     expect(store.dealById(a.id).closedAt).toBeTypeOf('number');
-    expect(store.dealById(a.id).stageHistory.at(-1).stage).toBe('won');
+    expect(store.dealById(a.id).stageHistory.at(-1).stage).toBe('s8');
     // B was already won: untouched, close date preserved.
     expect(store.dealById(b.id).closedAt).toBe(b.closedAt);
 
-    await store.bulkMoveDeals([a.id], 'qualified');
+    await store.bulkMoveDeals([a.id], 's2');
     expect(store.dealById(a.id).closedAt).toBeNull();
   });
 
@@ -2148,7 +2099,7 @@ describe('export / import', () => {
     expect(store.companies).toHaveLength(1);
     expect(store.companies[0].name).toBe('');
     expect(store.contacts[0].status).toBe('lead');
-    expect(store.deals[0]).toMatchObject({ stage: 'new', value: 0, closedAt: null });
+    expect(store.deals[0]).toMatchObject({ stage: 's1', value: 0, closedAt: null });
     expect(store.deals[1].closedAt).toBeTypeOf('number');
     expect(store.activities[0].type).toBe('note');
     expect(store.activities[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -2166,7 +2117,7 @@ describe('export / import', () => {
     await store.importAll({
       app: 'crm', version: 1, settings: {}, companies: [], contacts: [],
       deals: [
-        { id: 'd1', name: 'Open', stage: 'proposal', closeReason: 'Price', closeReasonNote: 'n' },
+        { id: 'd1', name: 'Open', stage: 's5', closeReason: 'Price', closeReasonNote: 'n' },
         { id: 'd2', name: 'Lost', stage: 'lost', closeReason: 'Price' },
       ],
       activities: [], tasks: [],

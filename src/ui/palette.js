@@ -15,7 +15,7 @@ import { matchScore, formatDate, timeAgo, sinceLabel } from '../lib/util.js';
 import { rateText } from '../lib/recurring.js';
 import { stageBadge, avatar } from './bits.js';
 import { VIEW_KINDS, viewsOf } from '../lib/views.js';
-import { openContactForm, openDealForm, openActivityForm, openTaskForm } from './forms.js';
+import { openContactForm, openDealForm, openActivityForm, openTaskForm } from './mvp-forms.js';
 
 /** Results past this stop helping and start scrolling. */
 const MAX_PER_GROUP = 5;
@@ -71,7 +71,7 @@ function searchGroups(query) {
           title: c.name,
           sub: [c.title, companyName(c.companyId), c.email].filter(Boolean).join(' · ') || 'Контакт',
           lead: avatar(c.name),
-          run: goTo(`#/leads?id=${c.id}`),
+          run: goTo(`#/contacts?id=${c.id}`),
         })),
     },
     {
@@ -193,7 +193,7 @@ function emptyStateGroups() {
           title: c.name,
           sub: last ? `Последнее касание ${sinceLabel(last).text}` : 'Записей нет',
           lead: avatar(c.name),
-          run: goTo(`#/leads?id=${c.id}`),
+          run: goTo(`#/contacts?id=${c.id}`),
         },
       };
     }),

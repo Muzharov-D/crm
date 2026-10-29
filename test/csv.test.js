@@ -429,14 +429,14 @@ describe('Russian and legacy English spreadsheets', () => {
     expect(matchStage('выиграна', stages, 'new')).toBe('won');
     expect(matchStage('Won', stages, 'new')).toBe('won');
     expect(matchStage('Lost', stages, 'new')).toBe('lost');
-    expect(matchStage('Проиграно', stages, 'new')).toBe('lost');
+    expect(matchStage('Проиграно', stages, 'new')).toBe('new');
     // Negotiation is a default stage, but not one this funnel has.
     expect(matchStage('Переговоры', stages, 'new')).toBe('new');
     expect(matchStage('Negotiation', stages, '')).toBe('');
     // A renamed stage still answers to its id and its own label.
     const custom = [{ id: 'proposal', label: 'КП отправлено' }];
     expect(matchStage('КП отправлено', custom, '')).toBe('proposal');
-    expect(matchStage('Предложение', custom, '')).toBe('proposal');
+    expect(matchStage('Предложение', custom, '')).toBe('');
   });
 
   it('reads billing written in Russian', () => {

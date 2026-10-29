@@ -22,7 +22,7 @@ import { uid, countLabel } from './util.js';
 
 /** The lists that can carry views, with the words the UI uses for them. */
 export const VIEW_KINDS = [
-  { key: 'contacts', label: 'Контакты', hash: '#/leads' },
+  { key: 'contacts', label: 'Контакты', hash: '#/contacts' },
   { key: 'companies', label: 'Компании', hash: '#/companies' },
   { key: 'deals', label: 'Сделки', hash: '#/pipeline' },
 ];

@@ -32,7 +32,7 @@ import { openCloseReasonForm } from './close-reason.js';
 import { todayISO, clamp, countLabel } from '../lib/util.js';
 import { canWrite } from '../lib/access.js';
 
-function ensureWritable() {
+export function ensureWritable() {
   if (canWrite(store.user)) return true;
   toast('Роль наблюдателя позволяет только просматривать данные', { icon: 'info' });
   return false;
@@ -43,7 +43,7 @@ function ensureWritable() {
 let fieldSeq = 0;
 const fid = () => `f-${++fieldSeq}`;
 
-function field(label, input, { hint = null, grow = false } = {}) {
+export function field(label, input, { hint = null, grow = false } = {}) {
   const id = fid();
   // `input` may be a wrapper (e.g. .select-wrap around a <select>); the
   // label must point at the actual control or it has no accessible name.
@@ -58,7 +58,7 @@ function field(label, input, { hint = null, grow = false } = {}) {
   );
 }
 
-function textInput(props = {}) {
+export function textInput(props = {}) {
   return el('input.input', { type: 'text', ...props });
 }
 
@@ -66,7 +66,7 @@ function textInput(props = {}) {
  * A select. An entry carrying `options` becomes an <optgroup>, so a picker
  * can lead with the choices that belong to the record it was opened from.
  */
-function makeSelect(options, value, props = {}) {
+export function makeSelect(options, value, props = {}) {
   const select = el('select.select', props, optionNodes(options, value));
   return { wrap: el('div.select-wrap', {}, select), select };
 }
@@ -85,16 +85,16 @@ function optionNodes(options, value) {
  * the select silently falls back to its first option, and saving the form
  * untouched wipes the stored value.
  */
-function withCurrent(options, current) {
+export function withCurrent(options, current) {
   if (!current || options.some((o) => o.value === current)) return options;
   return [...options, { value: current, label: current }];
 }
 
-function textArea(props = {}) {
+export function textArea(props = {}) {
   return el('textarea.input.textarea', { rows: 3, ...props });
 }
 
-function submitRow(label, { onDelete = null } = {}) {
+export function submitRow(label, { onDelete = null } = {}) {
   return el('div.form-actions', {},
     onDelete && el('button.btn.btn-ghost.btn-danger-ghost', { type: 'button', onclick: onDelete }, 'Удалить'),
     el('div.grow'),

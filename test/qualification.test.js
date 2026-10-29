@@ -67,9 +67,9 @@ describe('ABR qualification model', () => {
   });
 
   it('supports model and manager forecast modes without changing legacy mode', () => {
-    const deal = { stage: 'proposal', qualification: complete, updatedAt: Date.now() };
-    expect(probabilityOf(deal, {}, stages)).toBe(0.5);
+    const deal = { stage: 's5', qualification: complete, updatedAt: Date.now() };
+    expect(probabilityOf(deal, {}, stages)).toBe(0.35);
     expect(probabilityOf(deal, {}, stages, 'manager')).toBe(0.4);
-    expect(probabilityOf(deal, {}, stages, 'model')).not.toBe(0.5);
+    expect(probabilityOf(deal, {}, stages, 'model')).not.toBe(0.35);
   });
 });

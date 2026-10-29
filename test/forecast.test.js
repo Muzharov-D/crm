@@ -11,120 +11,66 @@ import {
 } from '../src/lib/forecast.js';
 
 const deal = (overrides = {}) => ({
-  id: 'd1', name: 'Test deal', value: 10000, stage: 'proposal',
+  id: 'd1', name: 'Test deal', value: 10000, stage: 's5',
   expectedClose: '2026-09-15', createdAt: Date.now(), updatedAt: Date.now(),
   closedAt: null, ...overrides,
 });
 
 describe('stages', () => {
-  it('defines six stages, four of them open', () => {
-    expect(STAGES).toHaveLength(6);
-    expect(OPEN_STAGES.map((s) => s.id)).toEqual(['new', 'qualified', 'proposal', 'negotiation']);
+  it('defines the ten canonical stages', () => {
+    expect(STAGES).toHaveLength(10);
+    expect(OPEN_STAGES.map((s) => s.id)).toEqual(['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10']);
   });
 
   it('stageInfo falls back to the first stage for unknown ids', () => {
-    expect(stageInfo('proposal').probability).toBe(0.5);
-    expect(stageInfo('bogus').id).toBe('new');
+    expect(stageInfo('s5').probability).toBe(0.35);
+    expect(stageInfo('bogus').id).toBe('s1');
   });
 
   it('isOpen is false only for won and lost', () => {
-    expect(isOpen(deal({ stage: 'new' }))).toBe(true);
+    expect(isOpen(deal({ stage: 's1' }))).toBe(true);
     expect(isOpen(deal({ stage: 'won' }))).toBe(false);
     expect(isOpen(deal({ stage: 'lost' }))).toBe(false);
   });
 });
 
-describe('configured stages', () => {
-  it('falls back to the defaults with no configuration', () => {
-    expect(resolveStages({}).map((s) => s.id))
-      .toEqual(['new', 'qualified', 'proposal', 'negotiation', 'won', 'lost']);
-    expect(resolveStages({ stages: [] })).toEqual(resolveStages({}));
-    expect(resolveStages()).toEqual(resolveStages({}));
+describe('canonical stages', () => {
+  const ids = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10'];
+
+  it('always resolves the fixed S1–S10 funnel, ignoring legacy custom settings', () => {
+    for (const settings of [{}, { stages: [] }, { stages: [{ id: 'demo', probability: 0.4 }] }]) {
+      expect(resolveStages(settings).map((stage) => stage.id)).toEqual(ids);
+    }
+    expect(openStages(resolveStages())).toHaveLength(MAX_OPEN_STAGES);
+    expect(firstStageId(resolveStages())).toBe('s1');
   });
 
-  it('keeps the configured open stages and always pins won/lost last', () => {
-    const stages = resolveStages({
-      stages: [{ id: 'demo', label: 'Demo booked', probability: 0.3 }],
-    });
-    expect(stages.map((s) => s.id)).toEqual(['demo', 'won', 'lost']);
-    expect(openStages(stages).map((s) => s.id)).toEqual(['demo']);
-    expect(firstStageId(stages)).toBe('demo');
-  });
-
-  it('drops junk: blank ids, duplicates, terminal collisions, non-objects', () => {
-    const stages = resolveStages({
-      stages: [
-        { id: 'a', label: 'A' }, null, 'nope', { label: 'no id' },
-        { id: 'a', label: 'dupe' }, { id: 'won', label: 'sneaky' },
-        { id: 'b' },
-      ],
-    });
-    expect(stages.map((s) => s.id)).toEqual(['a', 'b', 'won', 'lost']);
-    expect(stages[0].probability).toBe(0.5);   // missing probability → mid
-    expect(stages[1].label).toBe('b');         // missing label → id
-  });
-
-  it('treats junk probabilities as absent, not as Number() coercions', () => {
-    // Number(null) is 0 and Number(true) is 1 - a hand-edited export must
-    // not silently zero a stage out of the weighted forecast (or bless it).
-    const stages = resolveStages({
-      stages: [
-        { id: 'a', label: 'A', probability: null },
-        { id: 'b', label: 'B', probability: '' },
-        { id: 'c', label: 'C', probability: true },
-        { id: 'd', label: 'D', probability: '0.3' },
-        { id: 'e', label: 'E', probability: 0 },
-      ],
-    });
-    expect(stages[0].probability).toBe(0.5);
-    expect(stages[1].probability).toBe(0.5);
-    expect(stages[2].probability).toBe(0.5);
-    expect(stages[3].probability).toBe(0.3);   // numeric strings still count
-    expect(stages[4].probability).toBe(0);     // a real zero is a real zero
-  });
-
-  it('caps the number of open stages', () => {
-    const many = Array.from({ length: 20 }, (_, i) => ({ id: `s${i}`, label: `S${i}` }));
-    expect(openStages(resolveStages({ stages: many }))).toHaveLength(MAX_OPEN_STAGES);
-  });
-
-  it('clamps stage probabilities into [0, 1]', () => {
-    const stages = resolveStages({ stages: [{ id: 'a', label: 'A', probability: 5 }] });
-    expect(stages[0].probability).toBe(1);
-  });
-
-  it('weights deals with the configured stage list', () => {
-    const stages = resolveStages({ stages: [{ id: 'demo', label: 'Demo', probability: 0.4 }] });
-    const d = deal({ stage: 'demo', value: 1000 });
-    expect(probabilityOf(d, {}, stages)).toBe(0.4);
-    expect(weightedValue(d, {}, stages)).toBe(400);
-    expect(weightedPipeline([d], {}, stages)).toBe(400);
-    expect(probabilityOf(d, { demo: 0.9 }, stages)).toBe(0.9);
-    expect(stageSummary([d], {}, stages).map((s) => s.stage)).toEqual(['demo', 'won', 'lost']);
-    expect(forecastByMonth([deal({ stage: 'demo', value: 1000, expectedClose: '2026-08-10' })],
-      { months: 1, from: '2026-08', stages })[0].weighted).toBe(400);
+  it('keeps the prescribed probabilities, including an unweighted S1', () => {
+    expect(resolveStages().map((stage) => stage.probability)).toEqual([
+      null, 0.05, 0.15, 0.25, 0.35, 0.45, 0.85, 1, 1, 1,
+    ]);
   });
 });
 
 describe('probabilityOf', () => {
   it('uses stage defaults without overrides', () => {
-    expect(probabilityOf(deal({ stage: 'qualified' }))).toBe(0.25);
+    expect(probabilityOf(deal({ stage: 's2' }))).toBe(0.05);
   });
 
   it('honors overrides and clamps them to [0, 1]', () => {
-    expect(probabilityOf(deal({ stage: 'qualified' }), { qualified: 0.4 })).toBe(0.4);
-    expect(probabilityOf(deal({ stage: 'qualified' }), { qualified: 7 })).toBe(1);
-    expect(probabilityOf(deal({ stage: 'qualified' }), { qualified: -2 })).toBe(0);
+    expect(probabilityOf(deal({ stage: 's2' }), { s2: 0.4 })).toBe(0.4);
+    expect(probabilityOf(deal({ stage: 's2' }), { s2: 7 })).toBe(1);
+    expect(probabilityOf(deal({ stage: 's2' }), { s2: -2 })).toBe(0);
   });
 
   it('falls through to the stage default on a junk override, not to 0', () => {
     // A hand-edited export can carry anything; Number() would read these
     // as 0 (or 1) and quietly zero the stage out of the weighted forecast.
     for (const junk of [null, '', ' ', true, [], {}, 'high']) {
-      expect(probabilityOf(deal({ stage: 'qualified' }), { qualified: junk })).toBe(0.25);
+      expect(probabilityOf(deal({ stage: 's2' }), { s2: junk })).toBe(0.05);
     }
-    expect(probabilityOf(deal({ stage: 'qualified' }), { qualified: '0.4' })).toBe(0.4);
-    expect(probabilityOf(deal({ stage: 'qualified' }), { qualified: 0 })).toBe(0);
+    expect(probabilityOf(deal({ stage: 's2' }), { s2: '0.4' })).toBe(0.4);
+    expect(probabilityOf(deal({ stage: 's2' }), { s2: 0 })).toBe(0);
   });
 
   it('pins won to 1 and lost to 0 regardless of overrides', () => {
@@ -132,17 +78,19 @@ describe('probabilityOf', () => {
     expect(probabilityOf(deal({ stage: 'lost' }), { lost: 0.5 })).toBe(0);
   });
 
-  it('a per-deal confidence beats both the stage weight and its override', () => {
-    expect(probabilityOf(deal({ stage: 'qualified', confidence: 0.9 }))).toBe(0.9);
-    expect(probabilityOf(deal({ stage: 'qualified', confidence: 0.9 }), { qualified: 0.4 })).toBe(0.9);
-    // Omit is a real judgment, not "unset".
-    expect(probabilityOf(deal({ stage: 'qualified', confidence: 0 }), { qualified: 0.4 })).toBe(0);
+  it('uses per-deal confidence only in the optional manager forecast', () => {
+    const d = deal({ stage: 's2', confidence: 0.9 });
+    expect(probabilityOf(d)).toBe(0.05);
+    expect(probabilityOf(d, { s2: 0.4 })).toBe(0.4);
+    expect(probabilityOf(d, {}, STAGES, 'manager')).toBe(0.9);
+    expect(probabilityOf(deal({ stage: 's2', confidence: 0 }), {}, STAGES, 'manager')).toBe(0);
   });
 
   it('null, junk, and out-of-range confidence fall back or clamp', () => {
-    expect(probabilityOf(deal({ stage: 'qualified', confidence: null }))).toBe(0.25);
-    expect(probabilityOf(deal({ stage: 'qualified', confidence: 'high' }))).toBe(0.25);
-    expect(probabilityOf(deal({ stage: 'qualified', confidence: 3 }))).toBe(1);
+    expect(probabilityOf(deal({ stage: 's2', confidence: null }))).toBe(0.05);
+    expect(probabilityOf(deal({ stage: 's2', confidence: 'high' }))).toBe(0.05);
+    expect(probabilityOf(deal({ stage: 's2', confidence: 3 }))).toBe(0.05);
+    expect(probabilityOf(deal({ stage: 's2', confidence: 3 }), {}, STAGES, 'manager')).toBe(1);
   });
 
   it('cannot unsettle a closed deal', () => {
@@ -171,8 +119,8 @@ describe('confidence helpers', () => {
 
 describe('pipeline totals', () => {
   const deals = [
-    deal({ id: 'a', value: 10000, stage: 'proposal' }),      // weighted 5000
-    deal({ id: 'b', value: 4000, stage: 'new' }),             // weighted 400
+    deal({ id: 'a', value: 10000, stage: 's5' }),      // weighted 5000
+    deal({ id: 'b', value: 4000, stage: 's1' }),             // weighted 400
     deal({ id: 'c', value: 99999, stage: 'won' }),            // closed - excluded
     deal({ id: 'd', value: 5555, stage: 'lost' }),            // closed - excluded
   ];
@@ -182,19 +130,19 @@ describe('pipeline totals', () => {
   });
 
   it('weightedPipeline applies stage probabilities', () => {
-    expect(weightedPipeline(deals)).toBe(5400);
+    expect(weightedPipeline(deals)).toBe(3500);
   });
 
   it('weightedValue rounds to cents', () => {
-    expect(weightedValue(deal({ value: 333.33, stage: 'proposal' }))).toBe(166.67);
+    expect(weightedValue(deal({ value: 333.33, stage: 's5' }))).toBe(116.67);
   });
 
   it('stageSummary reports counts and totals in canonical order', () => {
     const summary = stageSummary(deals);
-    expect(summary.map((s) => s.stage)).toEqual(['new', 'qualified', 'proposal', 'negotiation', 'won', 'lost']);
-    const proposal = summary.find((s) => s.stage === 'proposal');
-    expect(proposal).toMatchObject({ count: 1, value: 10000, weighted: 5000 });
-    const qualified = summary.find((s) => s.stage === 'qualified');
+    expect(summary.map((s) => s.stage)).toEqual(['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10']);
+    const proposal = summary.find((s) => s.stage === 's5');
+    expect(proposal).toMatchObject({ count: 1, value: 10000, weighted: 3500 });
+    const qualified = summary.find((s) => s.stage === 's2');
     expect(qualified).toMatchObject({ count: 0, value: 0, weighted: 0 });
   });
 });
@@ -204,27 +152,27 @@ describe('forecastByMonth', () => {
 
   it('buckets open deals by expected close month', () => {
     const rows = forecastByMonth([
-      deal({ value: 10000, stage: 'proposal', expectedClose: '2026-09-10' }),
-      deal({ id: 'd2', value: 6000, stage: 'negotiation', expectedClose: '2026-09-28' }),
+      deal({ value: 10000, stage: 's5', expectedClose: '2026-09-10' }),
+      deal({ id: 'd2', value: 6000, stage: 's6', expectedClose: '2026-09-28' }),
     ], { months: 3, from });
     expect(rows.map((r) => r.key)).toEqual(['2026-08', '2026-09', '2026-10']);
     const sept = rows[1];
     expect(sept.best).toBe(16000);
-    expect(sept.weighted).toBe(5000 + 4500);
+    expect(sept.weighted).toBe(3500 + 2700);
     expect(sept.count).toBe(2);
     expect(rows[0].count).toBe(0);
   });
 
   it('rolls overdue expected closes into the first month instead of dropping them', () => {
     const rows = forecastByMonth([
-      deal({ expectedClose: '2026-05-01', stage: 'proposal', value: 8000 }),
+      deal({ expectedClose: '2026-05-01', stage: 's5', value: 8000 }),
     ], { months: 2, from });
     expect(rows[0].best).toBe(8000);
-    expect(rows[0].weighted).toBe(4000);
+    expect(rows[0].weighted).toBe(2800);
   });
 
   it('buckets deals with no close date into the first month', () => {
-    const rows = forecastByMonth([deal({ expectedClose: null, value: 2000, stage: 'new' })],
+    const rows = forecastByMonth([deal({ expectedClose: null, value: 2000, stage: 's1' })],
       { months: 2, from });
     expect(rows[0].best).toBe(2000);
   });
@@ -258,8 +206,8 @@ describe('forecastByMonth', () => {
   });
 
   it('applies probability overrides', () => {
-    const rows = forecastByMonth([deal({ stage: 'proposal', value: 10000, expectedClose: '2026-08-20' })],
-      { months: 1, from, overrides: { proposal: 0.8 } });
+    const rows = forecastByMonth([deal({ stage: 's5', value: 10000, expectedClose: '2026-08-20' })],
+      { months: 1, from, overrides: { s5: 0.8 } });
     expect(rows[0].weighted).toBe(8000);
   });
 
@@ -267,11 +215,11 @@ describe('forecastByMonth', () => {
     const rows = forecastByMonth([
       deal({
         value: 2000, billing: 'monthly', term: 12,
-        stage: 'proposal', expectedClose: '2026-09-10',
+        stage: 's5', expectedClose: '2026-09-10',
       }),
     ], { months: 3, from });
     expect(rows.map((r) => r.best)).toEqual([0, 2000, 2000]);
-    expect(rows.map((r) => r.weighted)).toEqual([0, 1000, 1000]);
+    expect(rows.map((r) => r.weighted)).toEqual([0, 700, 700]);
     // Counted once, in the first month of its own that the horizon shows.
     expect(rows.map((r) => r.count)).toEqual([0, 1, 0]);
   });
@@ -302,7 +250,7 @@ describe('forecastByMonth', () => {
     const rows = forecastByMonth([
       deal({
         value: 24000, billing: 'annual', term: 24,
-        stage: 'proposal', expectedClose: '2026-08-05',
+        stage: 's5', expectedClose: '2026-08-05',
       }),
     ], { months: 4, from });
     expect(rows.map((r) => r.best)).toEqual([24000, 0, 0, 0]);
@@ -311,17 +259,17 @@ describe('forecastByMonth', () => {
 
 describe('recurring revenue in the pipeline figures', () => {
   it('values an open recurring deal at its whole contract', () => {
-    const monthly = deal({ value: 2000, billing: 'monthly', term: 12, stage: 'proposal' });
+    const monthly = deal({ value: 2000, billing: 'monthly', term: 12, stage: 's5' });
     expect(pipelineValue([monthly])).toBe(24000);
-    expect(weightedValue(monthly)).toBe(12000);
-    expect(weightedPipeline([monthly])).toBe(12000);
-    expect(stageSummary([monthly])[2].value).toBe(24000);
+    expect(weightedValue(monthly)).toBe(8400);
+    expect(weightedPipeline([monthly])).toBe(8400);
+    expect(stageSummary([monthly]).find((row) => row.stage === 's5').value).toBe(24000);
   });
 
   it('leaves a one-time deal exactly as it was', () => {
-    const once = deal({ value: 24000, stage: 'proposal' });
+    const once = deal({ value: 24000, stage: 's5' });
     expect(pipelineValue([once])).toBe(24000);
-    expect(weightedValue(once)).toBe(12000);
+    expect(weightedValue(once)).toBe(8400);
   });
 
   it('counts won recurring revenue in the month it bills, not all at once', () => {
@@ -353,7 +301,7 @@ describe('recurring revenue in the pipeline figures', () => {
 
 describe('revenue goal', () => {
   const won = (value, day) => deal({ stage: 'won', value, closedAt: new Date(2026, 7, day).getTime() });
-  const deals = [won(3000, 2), won(1000, 9), deal({ stage: 'proposal', value: 50000 })];
+  const deals = [won(3000, 2), won(1000, 9), deal({ stage: 's5', value: 50000 })];
   const mid = new Date(2026, 7, 15);       // Aug 15 of 31
 
   it('is inert without a goal', () => {
@@ -390,7 +338,7 @@ describe('revenue goal', () => {
 
 describe('close-date windows', () => {
   const today = '2026-08-20';
-  const d = (expectedClose, stage = 'proposal') => deal({ expectedClose, stage });
+  const d = (expectedClose, stage = 's5') => deal({ expectedClose, stage });
 
   it('any matches everything, including deals with no close date', () => {
     expect(matchesCloseWindow(d(null), 'any', today)).toBe(true);
@@ -426,7 +374,7 @@ describe('win/loss analysis', () => {
     deal({ id: 'w3', stage: 'won', value: 6000, closeReason: '' }),
     deal({ id: 'l1', stage: 'lost', value: 4000, closeReason: 'Price' }),
     deal({ id: 'l2', stage: 'lost', value: 8000, closeReason: 'Competitor' }),
-    deal({ id: 'o1', stage: 'proposal', value: 99999, closeReason: 'Ignored' }),
+    deal({ id: 'o1', stage: 's5', value: 99999, closeReason: 'Ignored' }),
   ];
 
   it('groups reasons by frequency and counts what has none', () => {
@@ -454,7 +402,7 @@ describe('win/loss analysis', () => {
   });
 
   it('ignores open deals entirely', () => {
-    expect(winRateBy([deal({ stage: 'proposal' })], () => 'X')).toEqual([]);
+    expect(winRateBy([deal({ stage: 's5' })], () => 'X')).toEqual([]);
   });
 
   it('offers outcome-appropriate starter reasons', () => {
@@ -467,12 +415,12 @@ describe('time in stage', () => {
   const day = 86_400_000;
   const now = new Date(2026, 7, 20).getTime();
   const stuck = deal({
-    id: 'stuck', stage: 'proposal',
-    stageHistory: [{ stage: 'new', at: now - 40 * day }, { stage: 'proposal', at: now - 21 * day }],
+    id: 'stuck', stage: 's5',
+    stageHistory: [{ stage: 's1', at: now - 40 * day }, { stage: 's5', at: now - 21 * day }],
   });
   const fresh = deal({
-    id: 'fresh', stage: 'new',
-    stageHistory: [{ stage: 'new', at: now - 2 * day }],
+    id: 'fresh', stage: 's1',
+    stageHistory: [{ stage: 's1', at: now - 2 * day }],
   });
 
   it('reads the current stage entry from history', () => {
@@ -495,18 +443,18 @@ describe('time in stage', () => {
   it('averages days per stage over completed transitions only', () => {
     const v = stageVelocity([
       deal({ stageHistory: [
-        { stage: 'new', at: now - 30 * day }, { stage: 'qualified', at: now - 20 * day },
-        { stage: 'proposal', at: now - 5 * day },
+        { stage: 's1', at: now - 30 * day }, { stage: 's2', at: now - 20 * day },
+        { stage: 's5', at: now - 5 * day },
       ] }),
       deal({ stageHistory: [
-        { stage: 'new', at: now - 40 * day }, { stage: 'qualified', at: now - 20 * day },
+        { stage: 's1', at: now - 40 * day }, { stage: 's2', at: now - 20 * day },
       ] }),
     ]);
     const byStage = Object.fromEntries(v.map((r) => [r.stage, r]));
-    expect(byStage.new).toMatchObject({ days: 15, count: 2 });   // (10 + 20) / 2
-    expect(byStage.qualified).toMatchObject({ days: 15, count: 1 });
-    expect(byStage.proposal).toMatchObject({ days: null, count: 0 });
-    expect(v.map((r) => r.stage)).toEqual(['new', 'qualified', 'proposal', 'negotiation']);
+    expect(byStage.s1).toMatchObject({ days: 15, count: 2 });   // (10 + 20) / 2
+    expect(byStage.s2).toMatchObject({ days: 15, count: 1 });
+    expect(byStage.s5).toMatchObject({ days: null, count: 0 });
+    expect(v.map((r) => r.stage)).toEqual(['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10']);
   });
 });
 
@@ -527,7 +475,7 @@ describe('closed-deal stats', () => {
     const deals = [
       deal({ stage: 'won', value: 1000, closedAt: aug }),
       deal({ stage: 'won', value: 500, closedAt: july }),
-      deal({ stage: 'proposal', value: 9999 }),
+      deal({ stage: 's5', value: 9999 }),
     ];
     expect(wonInMonth(deals, '2026-08')).toBe(1000);
     expect(wonInMonth(deals, '2026-07')).toBe(500);

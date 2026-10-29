@@ -107,24 +107,10 @@ function attachmentRow(a) {
  * { contactId } | { companyId } | { dealId }. Views drop it into their
  * render pass like any other section.
  */
-export function attachmentsSection(owner) {
-  const files = store.attachmentsFor(owner);
-  // The input lives (hidden) in the DOM rather than being minted per
-  // click - some mobile engines refuse a picker on a detached input.
-  const picker = el('input.attachment-picker', {
-    type: 'file', tabindex: -1, 'aria-hidden': 'true',
-  });
-  const addBtn = el('button.btn.btn-ghost.btn-sm', {
-    html: icon('paperclip', 14, 2),
-    onclick: () => picker.click(),
-  }, ' Прикрепить');
-  picker.addEventListener('change', () => upload(owner, picker, addBtn));
-
-  return section('Файлы', addBtn,
-    picker,
-    files.length
-      ? el('div.attachment-list', {}, files.map(attachmentRow))
-      : el('p.card-empty', {},
-          `КП, заявки и прайс-листы хранятся вместе с карточкой на вашем сервере. До ${formatBytes(MAX_FILE_BYTES)} на файл.`)
-  );
+export function attachmentsSection() {
+  return section('Файлы', null,
+    el('div.avandok-empty', {},
+      el('span', { html: icon('fileText', 22) }),
+      el('div', {}, el('strong', {}, 'Авандок.Диск'),
+        el('p', {}, 'Интеграция и файловое хранилище — этап 2. В MVP файлы не загружаются.'))));
 }

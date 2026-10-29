@@ -14,6 +14,7 @@
 import { monthKey, shiftMonthKey, round2, todayISO } from './util.js';
 import { contractValue, billingSpread, isRecurring } from './recurring.js';
 import { qualificationMetrics } from './qualification.js';
+import { DEAL_STAGES } from './spec.js';
 
 /** Won and lost are terminal: always last, always pinned to 1/0. */
 export const TERMINAL_STAGES = [
@@ -21,33 +22,19 @@ export const TERMINAL_STAGES = [
   { id: 'lost', label: 'Проиграна', probability: 0 },
 ];
 
-/** The out-of-the-box funnel, used until the user configures their own. */
-export const DEFAULT_OPEN_STAGES = [
-  { id: 'new', label: 'Новая', probability: 0.1 },
-  { id: 'qualified', label: 'Квалификация', probability: 0.25 },
-  { id: 'proposal', label: 'Предложение', probability: 0.5 },
-  { id: 'negotiation', label: 'Переговоры', probability: 0.75 },
-];
+/** Canonical MVP v2.1 funnel. S1 deliberately has no assigned probability. */
+export const DEFAULT_OPEN_STAGES = DEAL_STAGES.map((s) => ({ ...s }));
 
-/** Optional nine-stage ABR funnel: S0–S7 open, S8 maps to Won. */
-export const ABR_OPEN_STAGES = [
-  { id: 's0', label: 'S0 Лид', probability: 0 },
-  { id: 's1', label: 'S1 Интерес', probability: 0.05 },
-  { id: 's2', label: 'S2 Квалифицирована', probability: 0.1 },
-  { id: 's3', label: 'S3 Демо', probability: 0.15 },
-  { id: 's4', label: 'S4 Пилот / проверка', probability: 0.25 },
-  { id: 's5', label: 'S5 Решение и КП', probability: 0.5 },
-  { id: 's6', label: 'S6 Закупка', probability: 0.7 },
-  { id: 's7', label: 'S7 Договор', probability: 0.85 },
-];
+/** Backward-compatible export name used by the settings screen. */
+export const ABR_OPEN_STAGES = DEFAULT_OPEN_STAGES;
 
-/** Default stage list. Runtime code uses store.stages() - the configured one. */
-export const STAGES = [...DEFAULT_OPEN_STAGES, ...TERMINAL_STAGES];
+/** Runtime stage list: no artificial Lost stage and no terminal columns. */
+export const STAGES = DEFAULT_OPEN_STAGES;
 
 export const OPEN_STAGES = DEFAULT_OPEN_STAGES;
 
 /** A board with more columns than this stops being readable. */
-export const MAX_OPEN_STAGES = 8;
+export const MAX_OPEN_STAGES = 10;
 
 export function isTerminalStage(stageId) {
   return stageId === 'won' || stageId === 'lost';
@@ -83,7 +70,7 @@ function sanitizeOpenStages(list) {
     const p = typeof s.probability === 'number' ? s.probability
       : (typeof s.probability === 'string' && s.probability.trim() ? Number(s.probability) : NaN);
     seen.add(id);
-    out.push({ id, label, probability: Number.isFinite(p) ? clamp01(p) : 0.5 });
+    out.push({ id, label, probability: Number.isFinite(p) ? clamp01(p) : (s.probability === null ? null : 0.5) });
     if (out.length >= MAX_OPEN_STAGES) break;
   }
   return out;
@@ -94,18 +81,26 @@ function sanitizeOpenStages(list) {
  * when they have configured any, else the defaults - with Won and Lost
  * pinned on the end either way.
  */
-export function resolveStages(settings = {}) {
-  const custom = sanitizeOpenStages(settings?.stages);
-  const open = custom.length ? custom : DEFAULT_OPEN_STAGES.map((s) => ({ ...s }));
-  return [...open, ...TERMINAL_STAGES.map((s) => ({ ...s }))];
+export function resolveStages() {
+  // MVP v2.1 fixes the canonical S1–S10 funnel. Legacy custom funnels are
+  // migrated to these ids instead of leaking extra columns into the board.
+  return DEFAULT_OPEN_STAGES.map((s) => ({ ...s }));
 }
 
 export function stageInfo(stageId, stages = STAGES) {
   return stages.find((s) => s.id === stageId) || stages[0];
 }
 
+export function isWon(deal) {
+  return deal?.outcome === 'Выиграна' || (!deal?.outcome && deal?.stage === 'won');
+}
+
+export function isLost(deal) {
+  return !!deal?.outcome && !isWon(deal) || (!deal?.outcome && deal?.stage === 'lost');
+}
+
 export function isOpen(deal) {
-  return !isTerminalStage(deal.stage);
+  return !deal?.outcome && !isTerminalStage(deal?.stage);
 }
 
 /* ---------- per-deal confidence ----------
@@ -145,21 +140,23 @@ export function confidenceLabel(confidence) {
  * a closed deal.
  */
 export function probabilityOf(deal, overrides = {}, stages = STAGES, mode = 'stage') {
-  if (deal.stage === 'won') return 1;
-  if (deal.stage === 'lost') return 0;
+  if (isWon(deal)) return 1;
+  if (isLost(deal)) return 0;
   if (mode === 'model') return qualificationMetrics(deal, { stages }).probability;
-  const own = normalizeConfidence(deal.confidence);
-  if (own !== null) return own;
   if (mode === 'manager') {
+    const own = normalizeConfidence(deal.confidence);
+    if (own !== null) return own;
     const manager = qualificationMetrics(deal, { stages }).managerProbability;
     if (manager !== null) return manager;
   }
+  // The mandatory v2.1 stage forecast is stage-driven. Legacy per-deal
+  // confidence is consulted only by the optional manager forecast mode.
   // Same strict reading as the per-deal override: a hand-edited export
   // with "proposal": null must fall through to the stage default, not
   // coerce to 0 and quietly zero the stage out of the forecast.
   const o = normalizeConfidence(overrides?.[deal.stage]);
   if (o !== null) return o;
-  return stageInfo(deal.stage, stages).probability;
+  return stageInfo(deal.stage, stages)?.probability ?? 0;
 }
 
 export function weightedValue(deal, overrides = {}, stages = STAGES, mode = 'stage') {
@@ -215,8 +212,8 @@ export function forecastByMonth(deals, { months = 6, from = monthKey(), override
   const index = new Map(rows.map((r) => [r.key, r]));
 
   for (const deal of deals) {
-    if (deal.stage === 'lost') continue;
-    if (deal.stage === 'won') {
+    if (isLost(deal)) continue;
+    if (isWon(deal)) {
       // Won revenue belongs to the month it landed in. Falling back to the
       // expected close would book a deal won last winter against whatever
       // future month its stale close date happens to name.
@@ -250,8 +247,8 @@ export function forecastByMonth(deals, { months = 6, from = monthKey(), override
  * as null when nothing has closed yet - 0% would read as "losing".
  */
 export function winRate(deals) {
-  const won = deals.filter((d) => d.stage === 'won').length;
-  const lost = deals.filter((d) => d.stage === 'lost').length;
+  const won = deals.filter(isWon).length;
+  const lost = deals.filter(isLost).length;
   const closed = won + lost;
   return { won, lost, rate: closed ? won / closed : null };
 }
@@ -267,7 +264,7 @@ export function winRate(deals) {
 export function wonInMonth(deals, key = monthKey()) {
   let total = 0;
   for (const deal of deals) {
-    if (deal.stage !== 'won') continue;
+    if (!isWon(deal)) continue;
     const start = monthKey(deal.closedAt ? new Date(deal.closedAt) : new Date());
     if (!isRecurring(deal)) {
       if (start === key) total += contractValue(deal);
@@ -335,7 +332,7 @@ export function closeReasonBreakdown(deals, stage) {
   const rows = new Map();
   let unrecorded = 0;
   for (const d of deals) {
-    if (d.stage !== stage) continue;
+    if (stage === 'won' ? !isWon(d) : stage === 'lost' ? !isLost(d) : d.stage !== stage) continue;
     const reason = String(d.closeReason || '').trim();
     if (!reason) { unrecorded++; continue; }
     const row = rows.get(reason) || { reason, count: 0, value: 0 };
@@ -358,11 +355,11 @@ export function closeReasonBreakdown(deals, stage) {
 export function winRateBy(deals, labelOf) {
   const groups = new Map();
   for (const d of deals) {
-    if (d.stage !== 'won' && d.stage !== 'lost') continue;
+    if (!isWon(d) && !isLost(d)) continue;
     const key = String(labelOf(d) || '').trim();
     if (!key) continue;
     const g = groups.get(key) || { key, won: 0, lost: 0, wonValue: 0 };
-    if (d.stage === 'won') {
+    if (isWon(d)) {
       g.won++;
       g.wonValue = round2(g.wonValue + contractValue(d));
     } else {
@@ -381,8 +378,8 @@ export function avgClosedValue(deals) {
     ? round2(list.reduce((sum, d) => sum + contractValue(d), 0) / list.length)
     : null);
   return {
-    won: avg(deals.filter((d) => d.stage === 'won')),
-    lost: avg(deals.filter((d) => d.stage === 'lost')),
+    won: avg(deals.filter(isWon)),
+    lost: avg(deals.filter(isLost)),
   };
 }
 
@@ -499,7 +496,7 @@ export function pipelineCoverage(weighted, remainingGoal) {
  * length founders quote. Null until at least one deal has closed.
  */
 export function avgSalesCycle(deals) {
-  const won = deals.filter((d) => d.stage === 'won' && d.closedAt && d.createdAt);
+  const won = deals.filter((d) => isWon(d) && d.closedAt && d.createdAt);
   if (!won.length) return null;
   const days = won.reduce((sum, d) => sum + Math.max(0, (d.closedAt - d.createdAt) / 86400000), 0);
   return Math.round(days / won.length);
