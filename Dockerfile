@@ -7,7 +7,7 @@ RUN npm run build && npm prune --omit=dev
 
 FROM node:22-alpine
 WORKDIR /app
-ENV NODE_ENV=production PORT=8790
+ENV NODE_ENV=production PORT=8790 CRM_PREVIEW=true
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/package.json ./
@@ -16,4 +16,4 @@ COPY server ./server
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 EXPOSE 8790
-CMD ["node", "server/index.js"]
+CMD ["node", "server/container.js"]

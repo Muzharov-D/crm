@@ -28,6 +28,7 @@ services:
       db:
         condition: service_healthy
     environment:
+      CRM_PREVIEW: 'false'
       DATABASE_URL: postgresql://crm:${POSTGRES_PASSWORD}@db:5432/crm
       CRM_USERS: ${CRM_USERS}
       SESSION_SECRET: ${SESSION_SECRET}

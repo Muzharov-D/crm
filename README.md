@@ -74,7 +74,9 @@ rejects request bodies over 4.5 MB, so attachments are capped at 4 MB).
 
 `docker-compose.yml`: Caddy (HTTPS, ports 80/443), the app, Postgres
 (internal network only). Point the domain's A record at the server first,
-otherwise Caddy cannot get a certificate.
+otherwise Caddy cannot get a certificate. A standalone container starts in
+preview mode with the test roles from `.env.example` and a random session
+secret; Compose disables that mode and requires the production secrets below.
 
 ```sh
 git clone <repo> crm && cd crm
