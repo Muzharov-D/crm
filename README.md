@@ -30,6 +30,10 @@ Without `DATABASE_URL`, data goes to `data/`. For live front-end edits run
 
 ## Vercel
 
+Production: https://crm-muzharov-dmitrys-projects-ccf03ba0.vercel.app (project
+`crm-muzharov`, Neon database `crm-db` in fra1). A push to `main` deploys.
+Commits must be authored as Muzharov26@icloud.com, otherwise Vercel blocks the deploy.
+
 `api/index.js` runs `server/app.js` as a function; the built app is static.
 Project environment: `DATABASE_URL` (Postgres, e.g. Neon from the Vercel
 Storage tab), `CRM_USERS`, `SESSION_SECRET`, `VITE_MAX_FILE_MB=4` (Vercel
