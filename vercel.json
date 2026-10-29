@@ -27,5 +27,8 @@
     "api/index.js": {
       "includeFiles": "server/**"
     }
-  }
+  },
+  "regions": [
+    "fra1"
+  ]
 }
