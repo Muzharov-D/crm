@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   todayISO, monthKey, shiftMonthKey, addDays, addMonthsClamped, daysBetween, dueLabel,
   formatDate, formatMonth, timeAgo, formatMoney, compactMoney, initials,
-  fuzzyIncludes, clamp, round2, matchScore, sinceLabel, formatClock, isValidISODate,
+  fuzzyIncludes, clamp, round2, matchScore, sinceLabel, formatClock, isValidISODate, plural, countLabel,
 } from '../src/lib/util.js';
 
 describe('dates', () => {
@@ -45,17 +45,17 @@ describe('dates', () => {
 
   it('dueLabel classifies against a fixed today', () => {
     const today = '2026-08-04';
-    expect(dueLabel('2026-08-01', today)).toEqual({ text: '3d overdue', status: 'overdue' });
-    expect(dueLabel('2026-08-04', today)).toEqual({ text: 'Today', status: 'today' });
-    expect(dueLabel('2026-08-05', today)).toEqual({ text: 'Tomorrow', status: 'soon' });
-    expect(dueLabel('2026-08-09', today)).toEqual({ text: 'In 5d', status: 'soon' });
+    expect(dueLabel('2026-08-01', today)).toEqual({ text: 'просрочено на 3 дн.', status: 'overdue' });
+    expect(dueLabel('2026-08-04', today)).toEqual({ text: 'Сегодня', status: 'today' });
+    expect(dueLabel('2026-08-05', today)).toEqual({ text: 'Завтра', status: 'soon' });
+    expect(dueLabel('2026-08-09', today)).toEqual({ text: 'Через 5 дн.', status: 'soon' });
     expect(dueLabel('2026-09-20', today).status).toBe('later');
   });
 
   it('formatDate hides the current year, shows others', () => {
     const thisYear = new Date().getFullYear();
-    expect(formatDate(`${thisYear}-08-12`)).toBe('Aug 12');
-    expect(formatDate('2001-08-12')).toBe('Aug 12, 2001');
+    expect(formatDate(`${thisYear}-08-12`)).toBe('12 авг');
+    expect(formatDate('2001-08-12')).toBe('12 авг 2001');
   });
 
   it('formatDate shows an unnameable date as stored, not as "undefined"', () => {
@@ -75,54 +75,54 @@ describe('dates', () => {
   });
 
   it('formatMonth renders a month key', () => {
-    expect(formatMonth('2026-08')).toBe('Aug 2026');
+    expect(formatMonth('2026-08')).toBe('Авг 2026');
   });
 
   it('formatMonth can drop the year inside the current one', () => {
     const thisYear = new Date().getFullYear();
-    expect(formatMonth(`${thisYear}-08`, { year: 'auto' })).toBe('Aug');
-    expect(formatMonth(`${thisYear - 1}-12`, { year: 'auto' })).toBe(`Dec ${thisYear - 1}`);
+    expect(formatMonth(`${thisYear}-08`, { year: 'auto' })).toBe('Авг');
+    expect(formatMonth(`${thisYear - 1}-12`, { year: 'auto' })).toBe(`Дек ${thisYear - 1}`);
   });
 
   it('timeAgo buckets by age', () => {
     const now = Date.now();
-    expect(timeAgo(now - 20_000, now)).toBe('just now');
-    expect(timeAgo(now - 5 * 60_000, now)).toBe('5m ago');
-    expect(timeAgo(now - 3 * 3_600_000, now)).toBe('3h ago');
-    expect(timeAgo(now - 2 * 86_400_000, now)).toBe('2d ago');
+    expect(timeAgo(now - 20_000, now)).toBe('только что');
+    expect(timeAgo(now - 5 * 60_000, now)).toBe('5 мин назад');
+    expect(timeAgo(now - 3 * 3_600_000, now)).toBe('3 ч назад');
+    expect(timeAgo(now - 2 * 86_400_000, now)).toBe('2 дн. назад');
   });
 });
 
 describe('money', () => {
   it('formatMoney renders whole amounts without decimals', () => {
-    expect(formatMoney(12500, 'USD')).toBe('$12,500');
-    expect(formatMoney(0, 'USD')).toBe('$0');
+    expect(formatMoney(12500, 'RUB')).toBe('12 500 ₽');
+    expect(formatMoney(0, 'RUB')).toBe('0 ₽');
   });
 
   it('formatMoney keeps both cent digits when there are cents', () => {
-    expect(formatMoney(12500.5, 'USD')).toBe('$12,500.50');
-    expect(formatMoney(12500.55, 'USD')).toBe('$12,500.55');
-    expect(formatMoney(0.5, 'EUR')).toBe('€0.50');
+    expect(formatMoney(12500.5, 'RUB')).toBe('12 500,50 ₽');
+    expect(formatMoney(12500.55, 'USD')).toBe('12 500,55 $');
+    expect(formatMoney(0.5, 'EUR')).toBe('0,50 €');
   });
 
   it('compactMoney abbreviates large values', () => {
-    expect(compactMoney(950, 'USD')).toBe('$950');
-    expect(compactMoney(18500, 'USD')).toBe('$18.5K');
-    expect(compactMoney(4_200_000, 'USD')).toBe('$4.2M');
-    expect(compactMoney(-18500, 'USD')).toBe('-$18.5K');
+    expect(compactMoney(950, 'RUB')).toBe('950 ₽');
+    expect(compactMoney(18500, 'RUB')).toBe('18,5 тыс. ₽');
+    expect(compactMoney(4_200_000, 'RUB')).toBe('4,2 млн ₽');
+    expect(compactMoney(-18500, 'RUB')).toBe('-18,5 тыс. ₽');
     // Just under a million rounds up into the M range, never "$1000K".
-    expect(compactMoney(999_960, 'USD')).toBe('$1M');
-    expect(compactMoney(999_940, 'USD')).toBe('$999.9K');
+    expect(compactMoney(999_960, 'RUB')).toBe('1 млн ₽');
+    expect(compactMoney(999_940, 'RUB')).toBe('999,9 тыс. ₽');
     // And the same rung again at a billion, which a currency worth a
     // hundredth of a dollar reaches on an ordinary book of business.
-    expect(compactMoney(1_234_567_890, 'USD')).toBe('$1.2B');
-    expect(compactMoney(999_960_000, 'USD')).toBe('$1B');
-    expect(compactMoney(999_940_000, 'USD')).toBe('$999.9M');
-    expect(compactMoney(-2_500_000_000, 'USD')).toBe('-$2.5B');
+    expect(compactMoney(1_234_567_890, 'RUB')).toBe('1,2 млрд ₽');
+    expect(compactMoney(999_960_000, 'RUB')).toBe('1 млрд ₽');
+    expect(compactMoney(999_940_000, 'RUB')).toBe('999,9 млн ₽');
+    expect(compactMoney(-2_500_000_000, 'USD')).toBe('-2,5 млрд $');
   });
 
   it('compactMoney keeps small amounts exact', () => {
-    expect(compactMoney(9600, 'USD')).toBe('$9,600');
+    expect(compactMoney(9600, 'RUB')).toBe('9 600 ₽');
   });
 });
 
@@ -154,24 +154,24 @@ describe('matchScore', () => {
 
 describe('sinceLabel', () => {
   it('speaks in the units people use for last contact', () => {
-    expect(sinceLabel('2026-08-20', '2026-08-20').text).toBe('today');
-    expect(sinceLabel('2026-08-19', '2026-08-20').text).toBe('yesterday');
-    expect(sinceLabel('2026-08-15', '2026-08-20').text).toBe('5d ago');
-    expect(sinceLabel('2026-08-01', '2026-08-20').text).toBe('3w ago');
-    expect(sinceLabel('2026-05-20', '2026-08-20').text).toBe('3mo ago');
+    expect(sinceLabel('2026-08-20', '2026-08-20').text).toBe('сегодня');
+    expect(sinceLabel('2026-08-19', '2026-08-20').text).toBe('вчера');
+    expect(sinceLabel('2026-08-15', '2026-08-20').text).toBe('5 дн. назад');
+    expect(sinceLabel('2026-08-01', '2026-08-20').text).toBe('3 нед. назад');
+    expect(sinceLabel('2026-05-20', '2026-08-20').text).toBe('3 мес. назад');
   });
 
   it('treats a future date as today rather than negative time', () => {
-    expect(sinceLabel('2026-09-01', '2026-08-20')).toEqual({ text: 'today', days: 0 });
+    expect(sinceLabel('2026-09-01', '2026-08-20')).toEqual({ text: 'сегодня', days: 0 });
   });
 });
 
 describe('formatClock', () => {
-  it('renders 24h input as a 12h label', () => {
-    expect(formatClock('14:30')).toBe('2:30pm');
-    expect(formatClock('09:00')).toBe('9am');
-    expect(formatClock('00:05')).toBe('12:05am');
-    expect(formatClock('12:00')).toBe('12pm');
+  it('renders 24h input as a 24h label', () => {
+    expect(formatClock('14:30')).toBe('14:30');
+    expect(formatClock('09:00')).toBe('9:00');
+    expect(formatClock('00:05')).toBe('0:05');
+    expect(formatClock('12:00')).toBe('12:00');
     expect(formatClock('')).toBe('');
   });
 });
@@ -197,5 +197,14 @@ describe('text helpers', () => {
     expect(clamp(11, 0, 10)).toBe(10);
     expect(round2(1.005)).toBeCloseTo(1, 1);
     expect(round2(10.126)).toBe(10.13);
+  });
+});
+
+describe('plural', () => {
+  it('picks the Russian form for 1, 2-4 and 5+', () => {
+    const forms = ['сделка', 'сделки', 'сделок'];
+    expect([0, 1, 2, 4, 5, 11, 12, 14, 21, 22, 25, 101, 111].map((n) => plural(n, forms)))
+      .toEqual(['сделок', 'сделка', 'сделки', 'сделки', 'сделок', 'сделок', 'сделок', 'сделок', 'сделка', 'сделки', 'сделок', 'сделка', 'сделок']);
+    expect(countLabel(3, forms)).toBe('3 сделки');
   });
 });

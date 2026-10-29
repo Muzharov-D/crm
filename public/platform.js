@@ -14,6 +14,9 @@
     return res;
   };
   const json = async (url, options) => (await api(url, options)).json();
+  // What this page last read or wrote per KV key: the base the server
+  // merges against, so a save doesn't erase what others saved meanwhile.
+  const seen = new Map();
   const q = (name, value) => `${name}=${encodeURIComponent(String(value).replace(/^\/+/, ''))}`;
 
   window.puter = {
@@ -35,14 +38,21 @@
       getUser: () => json('/api/me', { cache: 'no-store' }),
     },
     kv: {
-      get: async (key) => (await json(`/api/kv/${encodeURIComponent(key)}`, { cache: 'no-store' })).value,
+      async get(key) {
+        const { value } = await json(`/api/kv/${encodeURIComponent(key)}`, { cache: 'no-store' });
+        seen.set(key, value ?? null);
+        return value;
+      },
       async set(key, value) {
         const text = typeof value === 'string' ? value : JSON.stringify(value);
         await api(`/api/kv/${encodeURIComponent(key)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ value: text }),
+          body: JSON.stringify({ value: text, base: seen.get(key) ?? null }),
         });
+        // What we sent, not the merged result: the next save then still
+        // reads others' additions as theirs rather than as our deletions.
+        seen.set(key, text);
         return true;
       },
       del: async (key) => (await json(`/api/kv/${encodeURIComponent(key)}`, { method: 'DELETE' })).deleted,

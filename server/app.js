@@ -14,6 +14,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openStorage, cleanKey, cleanPath } from './storage.js';
+import { mergeValue } from './merge.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const production = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
@@ -178,9 +179,13 @@ app.put('/api/kv/:key', express.json({ limit: '25mb' }), async (req, res, next) 
   if (!key) return res.status(400).json({ error: 'bad_key' });
   const value = req.body?.value;
   if (typeof value !== 'string') return res.status(400).json({ error: 'value_must_be_text' });
+  // With `base` (what this client last saw), changes saved by others since
+  // are merged in instead of overwritten. See merge.js.
+  const hasBase = req.body && 'base' in req.body;
+  const base = typeof req.body?.base === 'string' ? req.body.base : null;
   try {
-    await storage.kvSet(key, value);
-    res.json({ ok: true });
+    const stored = await storage.kvUpdate(key, (current) => (hasBase ? mergeValue(base, value, current) : value));
+    res.json({ ok: true, merged: stored !== value });
   } catch (err) {
     next(err);
   }

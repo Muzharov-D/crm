@@ -53,7 +53,7 @@ async function postgresStorage(url) {
     kind: 'postgres',
     async kvGet(key) {
       const r = await pool.query('select value from crm_kv where key = $1', [key]);
-      return r.rows[0]?.value ?? null;
+      return r.rows[0]?.value || null;
     },
     async kvSet(key, value) {
       await pool.query(
@@ -61,6 +61,25 @@ async function postgresStorage(url) {
          on conflict (key) do update set value = excluded.value, updated_at = now()`,
         [key, value],
       );
+    },
+    /** Read, change and write one key under a row lock, so concurrent saves queue up. */
+    async kvUpdate(key, change) {
+      const client = await pool.connect();
+      try {
+        await client.query('begin');
+        await client.query('insert into crm_kv (key, value) values ($1, $2) on conflict (key) do nothing', [key, '']);
+        const r = await client.query('select value from crm_kv where key = $1 for update', [key]);
+        const current = r.rows[0]?.value || null;
+        const next = change(current);
+        await client.query('update crm_kv set value = $2, updated_at = now() where key = $1', [key, next]);
+        await client.query('commit');
+        return next;
+      } catch (err) {
+        await client.query('rollback').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
     },
     async kvDelete(key) {
       const r = await pool.query('delete from crm_kv where key = $1', [key]);
@@ -99,8 +118,19 @@ async function fileStorage(dataDir) {
   await mkdir(filesDir, { recursive: true });
   const kvFile = (key) => path.join(kvDir, `${encodeURIComponent(key)}.txt`);
   const missing = (err) => err?.code === 'ENOENT';
+  // One process owns the folder: a promise chain per key is enough of a lock.
+  const queues = new Map();
   return {
     kind: 'files',
+    kvUpdate(key, change) {
+      const run = (queues.get(key) || Promise.resolve()).catch(() => {}).then(async () => {
+        const next = change(await this.kvGet(key));
+        await this.kvSet(key, next);
+        return next;
+      });
+      queues.set(key, run);
+      return run;
+    },
     async kvGet(key) {
       try {
         return await readFile(kvFile(key), 'utf8');
