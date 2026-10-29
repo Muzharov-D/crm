@@ -3,3 +3,6 @@ dist
 data
 .env
 backups
+.env.*
+!.env.example
+.vercel

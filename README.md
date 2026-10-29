@@ -28,6 +28,13 @@ PORT=8790
 Without `DATABASE_URL`, data goes to `data/`. For live front-end edits run
 `npm start` and `npm run dev` side by side (http://localhost:5274, API proxied).
 
+## Vercel
+
+`api/index.js` runs `server/app.js` as a function; the built app is static.
+Project environment: `DATABASE_URL` (Postgres, e.g. Neon from the Vercel
+Storage tab), `CRM_USERS`, `SESSION_SECRET`, `VITE_MAX_FILE_MB=4` (Vercel
+rejects request bodies over 4.5 MB, so attachments are capped at 4 MB).
+
 ## Timeweb (or any server with Docker)
 
 `docker-compose.yml`: Caddy (HTTPS, ports 80/443), the app, Postgres

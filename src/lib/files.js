@@ -10,8 +10,9 @@
 
 import { uid } from './util.js';
 
-/** Per-file cap. Proposals and order forms fit; disk images don't. */
-export const MAX_FILE_BYTES = 25 * 1024 * 1024;
+/** Per-file cap. Proposals and order forms fit; disk images don't.
+    VITE_MAX_FILE_MB lowers it where the host caps request size (Vercel: 4.5 MB). */
+export const MAX_FILE_BYTES = (Number(import.meta.env?.VITE_MAX_FILE_MB) || 25) * 1024 * 1024;
 
 const DIR = 'attachments';
 

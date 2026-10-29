@@ -30,7 +30,12 @@ export async function openStorage({ databaseUrl, dataDir }) {
 async function postgresStorage(url) {
   const { default: pg } = await import('pg');
   const local = /localhost|127\.0\.0\.1/.test(url);
-  const pool = new pg.Pool({ connectionString: url, ssl: local ? false : { rejectUnauthorized: false } });
+  const pool = new pg.Pool({
+    connectionString: url,
+    ssl: local ? false : { rejectUnauthorized: false },
+    // A serverless instance handles one request at a time.
+    max: process.env.VERCEL ? 2 : 10,
+  });
   await pool.query(`
     create table if not exists crm_kv (
       key text primary key,
