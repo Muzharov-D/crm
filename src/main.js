@@ -17,7 +17,7 @@ function showError(title, message, onRetry) {
     el('div.empty-icon', { html: icon('wifiOff', 30) }),
     el('h1.auth-title.auth-title-sm', {}, title),
     el('p.auth-sub', {}, message),
-    el('button.btn.btn-primary.auth-cta', { onclick: onRetry }, 'Try again')
+    el('button.btn.btn-primary.auth-cta', { onclick: onRetry }, 'Повторить')
   ));
 }
 
@@ -27,7 +27,7 @@ async function start() {
   // opened on the sign-in screen would never have a shell to launch.
   registerWorker();
   if (typeof puter === 'undefined') {
-    showError('Couldn’t start', 'The app failed to load. Check your connection and try again.', () => location.reload());
+    showError('Не удалось запустить', 'Приложение не загрузилось. Проверьте подключение и повторите попытку.', () => location.reload());
     return;
   }
 
@@ -71,7 +71,7 @@ async function boot() {
     await store.init();
   } catch (err) {
     console.error(err);
-    showError('Couldn’t load your data', 'Something went wrong talking to the server.', () => location.reload());
+    showError('Не удалось загрузить данные', 'Ошибка при обращении к серверу.', () => location.reload());
     return;
   }
 

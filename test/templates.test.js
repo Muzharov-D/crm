@@ -27,13 +27,13 @@ describe('templateContext', () => {
       contact: { name: '  Dana Fox ' },
       company: { name: 'Atlas' },
       deal: { name: 'Fleet pilot', value: 18000 },
-      currency: 'USD',
+      currency: 'RUB',
     });
     expect(ctx.firstName).toBe('Dana');
     expect(ctx.name).toBe('  Dana Fox ');
     expect(ctx.company).toBe('Atlas');
     expect(ctx.dealName).toBe('Fleet pilot');
-    expect(ctx.dealValue).toBe('$18,000');
+    expect(ctx.dealValue).toBe('18 000 ₽');
   });
 
   it('is all empty strings with nothing linked', () => {

@@ -13,7 +13,7 @@
 import { todayISO, addDays, daysInMonth, monthKey, shiftMonthKey } from './util.js';
 
 /** Monday first: a sales week starts on the day people answer the phone. */
-export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+export const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
 /** Monday-based weekday index of an ISO day: 0 = Monday, 6 = Sunday. */
 export function weekdayIndex(iso) {

@@ -133,7 +133,7 @@ describe('prompts', () => {
     expect(context).toContain('Northwind');
     expect(context).toContain('Scoping call');
     expect(context).toContain('Chase legal');
-    expect(context).toContain('$42,000');
+    expect(context).toContain('42 000 ₽');
     // Nothing about any other record can be in it - there is nothing else in it.
     expect(context.split('\n').length).toBeLessThan(20);
   });

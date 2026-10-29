@@ -42,7 +42,8 @@ beforeEach(installPuterMock);
 describe('init', () => {
   it('seeds defaults on an empty account', async () => {
     const store = await freshStore();
-    expect(store.settings.currency).toBe('USD');
+    expect(store.settings.currency).toBe('RUB');
+    expect(store.settings.theme).toBe('light');
     expect(store.settings.onboarded).toBe(false);
     expect(store.settings.nextStepNudges).toBe(true);
     expect(store.contacts).toEqual([]);
@@ -69,7 +70,7 @@ describe('init', () => {
     const store = await freshStore();
     expect(store.contacts).toEqual([]);
     expect(store.deals).toEqual([]);
-    expect(store.settings.currency).toBe('USD');
+    expect(store.settings.currency).toBe('RUB');
   });
 
   it('survives a signed-out getUser', async () => {
@@ -406,7 +407,7 @@ describe('configurable stages', () => {
     const store = await freshStore();
     await store.setStages([{ id: 'trial', label: 'Trial', probability: 0.6 }]);
     const reloaded = await freshStore();
-    expect(reloaded.stages().map((s) => s.label)).toEqual(['Trial', 'Won', 'Lost']);
+    expect(reloaded.stages().map((s) => s.label)).toEqual(['Trial', 'Выиграна', 'Проиграна']);
   });
 
   it('resets to the default funnel with a null list', async () => {

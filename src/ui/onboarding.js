@@ -13,16 +13,17 @@ import { sampleDataset } from '../lib/sample.js';
 import { openContactForm } from './forms.js';
 
 const CURRENCIES = [
-  { code: 'USD', name: 'US Dollar' },
-  { code: 'EUR', name: 'Euro' },
-  { code: 'GBP', name: 'British Pound' },
-  { code: 'CAD', name: 'Canadian Dollar' },
-  { code: 'AUD', name: 'Australian Dollar' },
-  { code: 'INR', name: 'Indian Rupee' },
-  { code: 'JPY', name: 'Japanese Yen' },
-  { code: 'BRL', name: 'Brazilian Real' },
-  { code: 'CHF', name: 'Swiss Franc' },
-  { code: 'SEK', name: 'Swedish Krona' },
+  { code: 'RUB', name: 'Российский рубль' },
+  { code: 'USD', name: 'Доллар США' },
+  { code: 'EUR', name: 'Евро' },
+  { code: 'GBP', name: 'Фунт стерлингов' },
+  { code: 'CAD', name: 'Канадский доллар' },
+  { code: 'AUD', name: 'Австралийский доллар' },
+  { code: 'INR', name: 'Индийская рупия' },
+  { code: 'JPY', name: 'Японская иена' },
+  { code: 'BRL', name: 'Бразильский реал' },
+  { code: 'CHF', name: 'Швейцарский франк' },
+  { code: 'SEK', name: 'Шведская крона' },
 ];
 
 export function shouldOnboard(store) {
@@ -39,12 +40,12 @@ export function openOnboarding() {
       store.updateSettings({ onboarded: true }).catch(() => {});
     }
   };
-  const modal = openModal({ title: 'Welcome', content: body, onClose: markDone });
+  const modal = openModal({ title: 'Добро пожаловать', content: body, onClose: markDone });
 
   const skipBtn = () => el('button.btn.btn-ghost.btn-block.mt-sm', {
     type: 'button',
     onclick: () => { markDone(); modal.close(); },
-  }, 'Skip for now');
+  }, 'Пропустить');
 
   /* Step 0 - welcome */
   function renderWelcome() {
@@ -52,18 +53,18 @@ export function openOnboarding() {
     append(body, [
       el('div.empty.onboard-hero', {},
         el('img.onboard-mark', { src: './icon-192.png', width: 58, height: 58, alt: '' }),
-        el('h3', {}, 'Your pipeline, your server'),
-        el('p', {}, 'Track leads, companies, deals, and follow-ups, and see a forecast you can trust. Stored on your own server, never sold or shared.')
+        el('h3', {}, 'Ваша воронка, ваши данные'),
+        el('p', {}, 'Контакты, компании, сделки и задачи в одном месте, а ещё прогноз, которому можно доверять. Данные хранятся на вашем сервере, их никто не продаёт и не передаёт.')
       ),
       el('button.btn.btn-primary.btn-block.btn-tall', {
         type: 'button',
         onclick: renderCurrency,
-      }, 'Set up my pipeline'),
+      }, 'Настроить воронку'),
       el('button.btn.btn-ghost.btn-block.btn-dashed.mt-sm', {
         type: 'button',
         html: icon('sparkle', 15, 2),
         onclick: useSampleData,
-      }, ' Explore with sample data'),
+      }, ' Посмотреть на демо-данных'),
       skipBtn(),
     ]);
   }
@@ -77,12 +78,12 @@ export function openOnboarding() {
       await store.importAll(sampleDataset(store));
     } catch (err) {
       console.error(err);
-      toast('Couldn’t load the sample data. Check your connection', { icon: 'wifiOff' });
+      toast('Не удалось загрузить демо-данные. Проверьте подключение', { icon: 'wifiOff' });
       btn.disabled = false;
       return;
     }
     modal.close();
-    toast('Sample data loaded. Wipe it anytime from the banner', { icon: 'sparkle' });
+    toast('Демо-данные загружены. Удалить их можно в любой момент через баннер', { icon: 'sparkle' });
   }
 
   /* Step 1 - currency, then straight into the first lead */
@@ -90,12 +91,12 @@ export function openOnboarding() {
     clear(body);
     let picked = store.settings.currency;
     append(body, [
-      el('h3.onboard-h', {}, 'What currency do you sell in?'),
-      el('p.onboard-p', {}, 'Deal values, pipeline totals, and forecasts are shown in this currency.'),
+      el('h3.onboard-h', {}, 'В какой валюте вы продаёте?'),
+      el('p.onboard-p', {}, 'В этой валюте будут суммы сделок, итоги воронки и прогноз.'),
       el('div.field', {},
         el('div.select-wrap', {},
           el('select.select', {
-            'aria-label': 'Currency',
+            'aria-label': 'Валюта',
             onchange: (ev) => { picked = ev.target.value; },
           }, CURRENCIES.map((c) =>
             el('option', { value: c.code, selected: c.code === picked }, `${c.code} · ${c.name}`)))
@@ -110,7 +111,7 @@ export function openOnboarding() {
           // The natural first move in an empty CRM: add the first lead.
           openContactForm();
         },
-      }, 'Add my first lead'),
+      }, 'Добавить первый контакт'),
       skipBtn(),
     ]);
   }

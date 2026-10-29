@@ -39,9 +39,15 @@ describe('nextRepeatDue', () => {
 
 describe('repeatLabel', () => {
   it('reads naturally for one and many', () => {
-    expect(repeatLabel({ every: 1, unit: 'day' })).toBe('Every day');
-    expect(repeatLabel({ every: 2, unit: 'week' })).toBe('Every 2 weeks');
-    expect(repeatLabel({ every: 3, unit: 'month' })).toBe('Every 3 months');
+    expect(repeatLabel({ every: 1, unit: 'day' })).toBe('Каждый день');
+    expect(repeatLabel({ every: 1, unit: 'week' })).toBe('Каждую неделю');
+    expect(repeatLabel({ every: 1, unit: 'month' })).toBe('Каждый месяц');
+    expect(repeatLabel({ every: 2, unit: 'week' })).toBe('Каждые 2 недели');
+    expect(repeatLabel({ every: 3, unit: 'month' })).toBe('Каждые 3 месяца');
+    expect(repeatLabel({ every: 5, unit: 'day' })).toBe('Каждые 5 дней');
+    expect(repeatLabel({ every: 11, unit: 'week' })).toBe('Каждые 11 недель');
+    expect(repeatLabel({ every: 21, unit: 'day' })).toBe('Каждый 21 день');
+    expect(repeatLabel({ every: 21, unit: 'week' })).toBe('Каждую 21 неделю');
   });
 
   it('is empty for no rule', () => {

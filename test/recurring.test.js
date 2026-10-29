@@ -178,22 +178,30 @@ describe('committed recurring revenue', () => {
 
 describe('words for the numbers', () => {
   it('names the billing mode', () => {
-    expect(billingLabel(deal())).toBe('One-time');
-    expect(billingLabel(deal({ billing: 'monthly' }))).toBe('Monthly');
-    expect(billingLabel(deal({ billing: 'annual' }))).toBe('Annual');
+    expect(billingLabel(deal())).toBe('Разово');
+    expect(billingLabel(deal({ billing: 'monthly' }))).toBe('Ежемесячно');
+    expect(billingLabel(deal({ billing: 'annual' }))).toBe('Ежегодно');
   });
 
   it('suffixes a rate only when the deal recurs', () => {
-    expect(rateText(deal({ value: 5000 }), 'USD')).toBe('$5,000');
-    expect(rateText(deal({ billing: 'monthly' }), 'USD')).toBe('$2,000/mo');
-    expect(rateText(deal({ billing: 'annual', value: 24000 }), 'USD')).toBe('$24,000/yr');
+    // ru-RU money: a no-break space between thousands and before the sign.
+    expect(rateText(deal({ value: 5000 }), 'RUB')).toBe('5\u00a0000\u00a0₽');
+    expect(rateText(deal({ billing: 'monthly' }), 'RUB')).toBe('2\u00a0000\u00a0₽ в месяц');
+    expect(rateText(deal({ billing: 'annual', value: 24000 }), 'RUB')).toBe('24\u00a0000\u00a0₽ в год');
+    // Roubles are the default currency.
+    expect(rateText(deal({ billing: 'monthly' }))).toBe('2\u00a0000\u00a0₽ в месяц');
   });
 
   it('spells the contract out, and says nothing for a one-time deal', () => {
     expect(termText(deal())).toBe(null);
-    expect(contractText(deal(), 'USD')).toBe(null);
-    expect(termText(deal({ billing: 'monthly', term: 1 }))).toBe('1 month');
-    expect(contractText(deal({ billing: 'monthly', term: 12 }), 'USD'))
-      .toBe('$24,000 over 12 months');
+    expect(contractText(deal(), 'RUB')).toBe(null);
+    expect(termText(deal({ billing: 'monthly', term: 1 }))).toBe('1 месяц');
+    expect(termText(deal({ billing: 'monthly', term: 3 }))).toBe('3 месяца');
+    expect(termText(deal({ billing: 'monthly', term: 12 }))).toBe('12 месяцев');
+    expect(termText(deal({ billing: 'annual', term: 21 }))).toBe('21 месяц');
+    expect(contractText(deal({ billing: 'monthly', term: 12 }), 'RUB'))
+      .toBe('24\u00a0000\u00a0₽ за 12 месяцев');
+    expect(contractText(deal({ billing: 'monthly', term: 1 }), 'RUB'))
+      .toBe('2\u00a0000\u00a0₽ за 1 месяц');
   });
 });

@@ -255,7 +255,7 @@ describe('custom fields in a spreadsheet', () => {
     expect(customCellText(plan, record)).toBe('Pro');
     expect(customCellText(seats, record)).toBe(40);
     expect(customCellText(renews, record)).toBe('2026-09-30');
-    expect(customCellText(trial, record)).toBe('No');
+    expect(customCellText(trial, record)).toBe('Нет');
     expect(customCellText(plan, { custom: {} })).toBe('');
   });
 
@@ -332,5 +332,137 @@ describe('value matching', () => {
     expect(matchStage('Scoping', stages, 'scoping')).toBe('scoping');
     expect(matchStage('won', stages, 'scoping')).toBe('won');
     expect(matchStage('Nurture', stages, 'scoping')).toBe('scoping');
+  });
+});
+
+describe('Russian and legacy English spreadsheets', () => {
+  const ctx = {
+    companyName: () => 'Норд-Автоматика', contactName: () => 'Марина Тихонова', dealName: () => '',
+    stageLabel: (s) => s, lastContacted: () => '', customFields: () => [],
+  };
+  const headerOf = (key) => parseCSV(exportRecords(key, [], ctx))[0];
+
+  it('exports headers in Russian', () => {
+    expect(headerOf('contacts')).toEqual([
+      'Имя', 'Должность', 'Эл. почта', 'Телефон', 'Компания', 'Источник', 'Статус',
+      'Метки', 'Последний контакт', 'Заметки', 'Создан',
+    ]);
+    expect(headerOf('companies')).toEqual(['Название', 'Отрасль', 'Сайт', 'Сотрудники', 'Метки', 'Заметки', 'Создана']);
+    expect(headerOf('deals').slice(0, 7)).toEqual([
+      'Название', 'Сумма', 'Оплата', 'Срок (мес.)', 'Сумма договора', 'Платёж в месяц', 'Этап',
+    ]);
+    expect(headerOf('tasks')).toEqual(['Задача', 'Срок', 'Время', 'Повтор', 'Выполнена', 'Контакт', 'Сделка']);
+    expect(headerOf('activities')).toEqual(['Дата', 'Тип', 'Тема', 'Заметки', 'Контакт', 'Компания', 'Сделка']);
+  });
+
+  it('writes statuses, activity types, and done flags in Russian', () => {
+    const [, contact] = parseCSV(exportRecords('contacts', [
+      { name: 'Марина', status: 'customer', tags: [], createdAt: 0 },
+    ], ctx));
+    expect(contact[6]).toBe('Клиент');
+    const [, activity] = parseCSV(exportRecords('activities', [
+      { date: '2026-10-01', type: 'call', summary: 'Созвон' },
+    ], ctx));
+    expect(activity[1]).toBe('Звонок');
+    const [, task] = parseCSV(exportRecords('tasks', [
+      { title: 'Позвонить', due: '2026-10-01', done: true },
+    ], ctx));
+    expect(task[4]).toBe('Да');
+  });
+
+  it('maps every column of its own Russian export back to the field it came from', () => {
+    for (const key of ['contacts', 'companies', 'deals']) {
+      const headers = headerOf(key);
+      const map = autoMap(headers, IMPORT_FIELDS[key]);
+      for (const field of IMPORT_FIELDS[key]) {
+        expect(headers[map[field.key]], `${key}.${field.key}`).toBe(field.label);
+      }
+    }
+  });
+
+  it('still maps the English headers older exports carry', () => {
+    const contacts = autoMap(
+      ['Name', 'Job title', 'Email', 'Phone', 'Company', 'Source', 'Status', 'Tags', 'Last contacted', 'Notes', 'Created'],
+      IMPORT_FIELDS.contacts);
+    expect(contacts).toMatchObject({
+      name: 0, title: 1, email: 2, phone: 3, company: 4, source: 5, status: 6, tags: 7, notes: 9,
+    });
+    const deals = autoMap(
+      ['Name', 'Value', 'Billing', 'Term (months)', 'Contract value', 'MRR', 'Stage', 'Company',
+        'Contact', 'Expected close', 'Tags', 'Close reason', 'Close detail', 'Notes'],
+      IMPORT_FIELDS.deals);
+    expect(deals).toMatchObject({
+      name: 0, value: 1, billing: 2, term: 3, stage: 6, company: 7, contact: 8,
+      expectedClose: 9, tags: 10, notes: 13,
+    });
+    const companies = autoMap(['Name', 'Industry', 'Website', 'Company size', 'Tags', 'Notes'], IMPORT_FIELDS.companies);
+    expect(companies).toEqual({ name: 0, industry: 1, website: 2, size: 3, tags: 4, notes: 5 });
+  });
+
+  it('reads Russian headers written by hand, case and ё aside', () => {
+    const map = autoMap(['ФИО', 'Электронная почта', 'Номер телефона', 'Организация', 'Примечание'], IMPORT_FIELDS.contacts);
+    expect(map).toMatchObject({ name: 0, email: 1, phone: 2, company: 3, notes: 4 });
+    const deals = autoMap(['Название сделки', 'Бюджет', 'Стадия', 'Срок закрытия', 'Платёж в месяц'], IMPORT_FIELDS.deals);
+    expect(deals).toMatchObject({ name: 0, value: 1, stage: 2, expectedClose: 3 });
+  });
+
+  it('matches a status by its Russian label and by the old English one', () => {
+    expect(matchStatus('Клиент')).toBe('customer');
+    expect(matchStatus('в работе')).toBe('active');
+    expect(matchStatus('ЛИД')).toBe('lead');
+    expect(matchStatus('Потерян')).toBe('lost');
+    expect(matchStatus('Customer')).toBe('customer');
+    expect(matchStatus('Lost touch')).toBe('lost');
+    expect(matchStatus('Lead')).toBe('lead');
+    expect(matchStatus('ВИП', '')).toBe('');
+  });
+
+  it('matches a stage by Russian or English name, only if the funnel has it', () => {
+    const stages = [
+      { id: 'new', label: 'Новая' },
+      { id: 'proposal', label: 'Предложение' },
+      { id: 'won', label: 'Выиграна' },
+      { id: 'lost', label: 'Проиграна' },
+    ];
+    expect(matchStage('Предложение', stages, 'new')).toBe('proposal');
+    expect(matchStage('Proposal', stages, 'new')).toBe('proposal');
+    expect(matchStage('выиграна', stages, 'new')).toBe('won');
+    expect(matchStage('Won', stages, 'new')).toBe('won');
+    expect(matchStage('Lost', stages, 'new')).toBe('lost');
+    expect(matchStage('Проиграно', stages, 'new')).toBe('lost');
+    // Negotiation is a default stage, but not one this funnel has.
+    expect(matchStage('Переговоры', stages, 'new')).toBe('new');
+    expect(matchStage('Negotiation', stages, '')).toBe('');
+    // A renamed stage still answers to its id and its own label.
+    const custom = [{ id: 'proposal', label: 'КП отправлено' }];
+    expect(matchStage('КП отправлено', custom, '')).toBe('proposal');
+    expect(matchStage('Предложение', custom, '')).toBe('proposal');
+  });
+
+  it('reads billing written in Russian', () => {
+    expect(matchBilling('В месяц')).toBe('monthly');
+    expect(matchBilling('ежемесячно')).toBe('monthly');
+    expect(matchBilling('В год')).toBe('annual');
+    expect(matchBilling('Ежегодно')).toBe('annual');
+    expect(matchBilling('разово')).toBe('one-time');
+    expect(matchBilling('поквартально', '')).toBe('');
+  });
+
+  it('reads a term in Russian months and years', () => {
+    expect(parseTerm('18 мес.')).toBe(18);
+    expect(parseTerm('1 год')).toBe(12);
+    expect(parseTerm('2 года')).toBe(24);
+    expect(parseTerm('5 лет')).toBe(60);
+  });
+
+  it('reads Russian dates and yes', () => {
+    expect(parseDateLoose('12 авг 2026')).toBe('2026-08-12');
+    expect(parseDateLoose('12 августа 2026')).toBe('2026-08-12');
+    expect(parseDateLoose('3 мая 2026 г.')).toBe('2026-05-03');
+    expect(parseDateLoose('1 Мар 2026')).toBe('2026-03-01');
+    expect(parseDateLoose('31 ноября 2026')).toBeNull();
+    expect(parseBool('Да')).toBe(true);
+    expect(parseBool('выполнено')).toBe(true);
+    expect(parseBool('Нет')).toBe(false);
   });
 });

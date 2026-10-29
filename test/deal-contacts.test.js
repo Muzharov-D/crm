@@ -17,7 +17,7 @@ describe('roles', () => {
     expect(normalizeRole('CHAMPION')).toBe('');
     expect(normalizeRole(undefined)).toBe('');
     expect(normalizeRole(7)).toBe('');
-    expect(roleLabel('decision-maker')).toBe('Decision maker');
+    expect(roleLabel('decision-maker')).toBe('ЛПР');
     expect(roleLabel('nope')).toBe('');
   });
 });

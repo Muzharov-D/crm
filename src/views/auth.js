@@ -6,29 +6,29 @@ export function authView({ onSignedIn }) {
   const cta = el('button.btn.btn-primary.auth-cta', {
     onclick: async () => {
       cta.disabled = true;
-      cta.textContent = 'Signing in…';
+      cta.textContent = 'Входим…';
       try {
         await puter.auth.signIn();
         onSignedIn();
       } catch {
         cta.disabled = false;
-        cta.textContent = 'Sign in';
+        cta.textContent = 'Войти';
       }
     },
-  }, 'Sign in');
+  }, 'Войти');
 
   return el('div.auth-view', {},
     el('img.auth-logo', { src: './icon-192.png', alt: '', 'aria-hidden': 'true' }),
-    el('h1.auth-title', {}, 'Sales CRM'),
-    el('p.auth-sub', {}, 'Leads, deals, follow-ups, and forecasts for founders who do their own selling.'),
+    el('h1.auth-title', {}, 'CRM для продаж'),
+    el('p.auth-sub', {}, 'Контакты, сделки, задачи и прогноз для основателей, которые продают сами.'),
     el('div.auth-features', {},
-      feature('pipeline', 'A pipeline board that shows exactly where every deal stands'),
-      feature('followups', 'Follow-ups with due dates, so no lead goes quiet by accident'),
-      feature('chart', 'A weighted forecast built from your stages, not wishful thinking'),
-      feature('company', 'Your data lives on your own server')
+      feature('pipeline', 'Воронка, где видно, на каком этапе каждая сделка'),
+      feature('followups', 'Задачи со сроками, чтобы ни один контакт не остыл случайно'),
+      feature('chart', 'Взвешенный прогноз по вашим этапам, а не по ожиданиям'),
+      feature('company', 'Данные хранятся на вашем собственном сервере')
     ),
     cta,
-    el('p.auth-note', {}, 'Free • No ads')
+    el('p.auth-note', {}, 'Бесплатно • Без рекламы')
   );
 
   function feature(ic, text) {

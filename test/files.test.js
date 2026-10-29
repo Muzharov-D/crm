@@ -41,9 +41,9 @@ describe('isAppFilePath', () => {
 
 describe('formatBytes', () => {
   it('reads like a human wrote it', () => {
-    expect(formatBytes(512)).toBe('512 B');
-    expect(formatBytes(2048)).toBe('2 KB');
-    expect(formatBytes(2.4 * 1024 * 1024)).toBe('2.4 MB');
-    expect(formatBytes(null)).toBe('0 B');
+    expect(formatBytes(512)).toBe('512 Б');
+    expect(formatBytes(2048)).toBe('2 КБ');
+    expect(formatBytes(2.4 * 1024 * 1024)).toBe('2,4 МБ');
+    expect(formatBytes(null)).toBe('0 Б');
   });
 });

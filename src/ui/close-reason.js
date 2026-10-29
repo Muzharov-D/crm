@@ -30,7 +30,7 @@ export function openCloseReasonForm(deal, { onClose = null, confirm = true } = {
   const all = existing && !options.includes(existing) ? [existing, ...options] : options;
   let picked = existing;
 
-  const chips = el('div.reason-chips', { role: 'group', 'aria-label': 'Reason' },
+  const chips = el('div.reason-chips', { role: 'group', 'aria-label': 'Причина' },
     all.map((r) => el('button.filter-chip', {
       type: 'button',
       'aria-pressed': String(picked === r),
@@ -53,22 +53,22 @@ export function openCloseReasonForm(deal, { onClose = null, confirm = true } = {
   const note = el('textarea.input.textarea', {
     rows: 3, maxlength: 500, value: deal.closeReasonNote || '',
     id: 'close-reason-note',
-    placeholder: won ? 'What tipped it over the line?' : 'What would have changed the outcome?',
+    placeholder: won ? 'Что стало решающим?' : 'Что могло изменить исход?',
   });
 
   const form = el('form.form', {},
     el('p.settings-note', {}, won
-      ? 'What made this one land? A few seconds now is a pattern in three months.'
-      : 'What happened? Lost deals are the cheapest lessons you will ever buy.'),
+      ? 'Почему сделка выиграна? Пара секунд сейчас — закономерность через три месяца.'
+      : 'Что произошло? Проигранная сделка — самый дешёвый урок.'),
     chips,
     el('div.field', {},
-      el('label.field-label', { for: 'close-reason-note' }, 'Detail (optional)'),
+      el('label.field-label', { for: 'close-reason-note' }, 'Подробности (необязательно)'),
       note
     ),
     el('div.form-actions', {},
-      el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Skip'),
+      el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Пропустить'),
       el('div.grow'),
-      el('button.btn.btn-primary', { type: 'submit' }, 'Save reason')
+      el('button.btn.btn-primary', { type: 'submit' }, 'Сохранить причину')
     )
   );
 
@@ -82,7 +82,7 @@ export function openCloseReasonForm(deal, { onClose = null, confirm = true } = {
         closeReasonNote: note.value.trim(),
       });
     } catch {
-      toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+      toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' });
       btn.disabled = false;
       return;
     }
@@ -92,12 +92,12 @@ export function openCloseReasonForm(deal, { onClose = null, confirm = true } = {
     // often below the fold on a phone.
     if (confirm) {
       const kept = picked || note.value.trim();
-      toast(kept ? 'Reason saved' : 'Reason cleared');
+      toast(kept ? 'Причина сохранена' : 'Причина удалена');
     }
   });
 
   const modal = openModal({
-    title: won ? 'Why did this one land?' : 'Why was it lost?',
+    title: won ? 'Почему сделка выиграна?' : 'Почему сделка проиграна?',
     content: form,
     onClose,
   });

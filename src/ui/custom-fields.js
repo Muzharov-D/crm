@@ -74,7 +74,7 @@ function buildControl(field, current) {
       options.push(stored);
     }
     const select = el('select.select', { id },
-      el('option', { value: '', selected: !stored }, 'Not set'),
+      el('option', { value: '', selected: !stored }, 'Не выбрано'),
       options.map((o) => el('option', { value: o, selected: o === stored }, o))
     );
     return {
@@ -178,13 +178,13 @@ export function customFilterControls(kind, filters, onChange) {
       options.push({ value: active, label: active });
     }
     const select = el('select.select.tag-filter-select', {
-      'aria-label': `Filter by ${field.name}`,
+      'aria-label': `Фильтр: ${field.name}`,
       dataset: { focusKey: `custom-filter-${field.id}` },
       onchange: () => onChange({ ...filters, [field.id]: select.value }),
     },
       // The name as the user wrote it: lower-casing turned "ICP fit" into
       // "icp fit", and an acronym read as a typo.
-      el('option', { value: '', selected: !active }, `Any ${field.name}`),
+      el('option', { value: '', selected: !active }, `${field.name}: любое`),
       options.map((o) => el('option', {
         value: o.value,
         selected: o.value.toLowerCase() === active.toLowerCase(),
@@ -197,6 +197,6 @@ export function customFilterControls(kind, filters, onChange) {
 /** "ICP fit: Strong" - what an active field filter is called in a message. */
 export function fieldFilterLabel(field, value) {
   if (!field) return '';
-  if (field.type === 'checkbox') return `${field.name}: ${value === 'no' ? 'No' : 'Yes'}`;
+  if (field.type === 'checkbox') return `${field.name}: ${value === 'no' ? 'Нет' : 'Да'}`;
   return `${field.name}: ${value}`;
 }

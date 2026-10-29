@@ -26,14 +26,14 @@ let openPaletteModal = null;
 /** The four things a founder starts from a blank prompt. */
 function quickActions() {
   return [
-    { id: 'new-deal', title: 'New deal', sub: 'An opportunity to move through the pipeline', icon: 'deal', run: () => openDealForm() },
-    { id: 'new-lead', title: 'New lead', sub: 'A person you might sell to', icon: 'userPlus', run: () => openContactForm() },
-    { id: 'log-activity', title: 'Log activity', sub: 'A meeting, call, email, or note', icon: 'video', run: () => openActivityForm() },
-    { id: 'new-task', title: 'New follow-up', sub: 'A dated reminder to reach out', icon: 'followups', run: () => openTaskForm() },
-    { id: 'go-pipeline', title: 'Go to Pipeline', sub: 'The board and the deal list', icon: 'pipeline', run: () => { location.hash = '#/pipeline'; } },
-    { id: 'go-forecast', title: 'Go to Forecast', sub: 'Weighted pipeline and win/loss', icon: 'chart', run: () => { location.hash = '#/forecast'; } },
-    { id: 'go-followups', title: 'Go to Follow-ups', sub: 'Everything you owe someone', icon: 'followups', run: () => { location.hash = '#/followups'; } },
-    { id: 'go-settings', title: 'Go to Settings', sub: 'Stages, goal, reminders, and your data', icon: 'gear', run: () => { location.hash = '#/settings'; } },
+    { id: 'new-deal', title: 'Новая сделка', sub: 'Возможность, которая пойдёт по воронке', icon: 'deal', run: () => openDealForm() },
+    { id: 'new-lead', title: 'Новый контакт', sub: 'Человек, которому можно продать', icon: 'userPlus', run: () => openContactForm() },
+    { id: 'log-activity', title: 'Записать в историю', sub: 'Встреча, звонок, письмо или заметка', icon: 'video', run: () => openActivityForm() },
+    { id: 'new-task', title: 'Новая задача', sub: 'Напоминание с датой, чтобы связаться', icon: 'followups', run: () => openTaskForm() },
+    { id: 'go-pipeline', title: 'Открыть воронку', sub: 'Доска и список сделок', icon: 'pipeline', run: () => { location.hash = '#/pipeline'; } },
+    { id: 'go-forecast', title: 'Открыть прогноз', sub: 'Взвешенная воронка, выигрыши и проигрыши', icon: 'chart', run: () => { location.hash = '#/forecast'; } },
+    { id: 'go-followups', title: 'Открыть задачи', sub: 'Всё, что вы кому-то обещали', icon: 'followups', run: () => { location.hash = '#/followups'; } },
+    { id: 'go-settings', title: 'Открыть настройки', sub: 'Этапы, план, напоминания и ваши данные', icon: 'gear', run: () => { location.hash = '#/settings'; } },
   ];
 }
 
@@ -57,7 +57,7 @@ function searchGroups(query) {
   return [
     {
       key: 'leads',
-      label: 'Leads',
+      label: 'Контакты',
       items: store.contacts
         .map((c) => ({
           score: best(query, c.name, c.email, c.phone, c.title, companyName(c.companyId),
@@ -69,14 +69,14 @@ function searchGroups(query) {
           score,
           key: `lead-${c.id}`,
           title: c.name,
-          sub: [c.title, companyName(c.companyId), c.email].filter(Boolean).join(' · ') || 'Lead',
+          sub: [c.title, companyName(c.companyId), c.email].filter(Boolean).join(' · ') || 'Контакт',
           lead: avatar(c.name),
           run: goTo(`#/leads?id=${c.id}`),
         })),
     },
     {
       key: 'companies',
-      label: 'Companies',
+      label: 'Компании',
       items: store.companies
         .map((c) => ({
           score: best(query, c.name, c.industry, c.website, c.notes, ...(c.tags || [])),
@@ -87,14 +87,14 @@ function searchGroups(query) {
           score,
           key: `company-${c.id}`,
           title: c.name,
-          sub: [c.industry, c.size && `${c.size} people`].filter(Boolean).join(' · ') || 'Company',
+          sub: [c.industry, c.size && `${c.size} сотр.`].filter(Boolean).join(' · ') || 'Компания',
           icon: 'building',
           run: goTo(`#/companies?id=${c.id}`),
         })),
     },
     {
       key: 'deals',
-      label: 'Deals',
+      label: 'Сделки',
       items: store.deals
         .map((d) => ({
           score: best(query, d.name, companyName(d.companyId), contactName(d.contactId),
@@ -115,7 +115,7 @@ function searchGroups(query) {
     },
     {
       key: 'views',
-      label: 'Saved views',
+      label: 'Сохранённые фильтры',
       items: VIEW_KINDS.flatMap((kind) => viewsOf(store.settings, kind.key).map((view) => ({
         score: best(query, view.name, kind.label),
         item: { view, kind },
@@ -125,7 +125,7 @@ function searchGroups(query) {
           score,
           key: `view-${item.view.id}`,
           title: item.view.name,
-          sub: `${item.kind.label} · saved view`,
+          sub: `${item.kind.label} · сохранённый фильтр`,
           icon: 'listChecks',
           // The list opens on the view rather than filtering itself after
           // arriving, so Back goes back to wherever the palette was opened.
@@ -134,7 +134,7 @@ function searchGroups(query) {
     },
     {
       key: 'tasks',
-      label: 'Follow-ups',
+      label: 'Задачи',
       items: store.tasks
         .map((t) => ({
           score: best(query, t.title, contactName(t.contactId), store.dealById(t.dealId)?.name),
@@ -145,7 +145,7 @@ function searchGroups(query) {
           score,
           key: `task-${t.id}`,
           title: t.title,
-          sub: [t.done ? 'Done' : `Due ${formatDate(t.due)}`,
+          sub: [t.done ? 'Выполнена' : `Срок ${formatDate(t.due)}`,
             contactName(t.contactId), store.dealById(t.dealId)?.name].filter(Boolean).join(' · '),
           icon: t.done ? 'checkbox' : 'followups',
           run: () => openTaskForm(t),
@@ -153,7 +153,7 @@ function searchGroups(query) {
     },
     {
       key: 'activities',
-      label: 'Activity',
+      label: 'История',
       items: store.activities
         .map((a) => ({
           score: best(query, a.summary, a.notes, contactName(a.contactId), companyName(a.companyId)),
@@ -163,7 +163,7 @@ function searchGroups(query) {
         .map(({ score, item: a }) => ({
           score,
           key: `activity-${a.id}`,
-          title: a.summary || 'Untitled note',
+          title: a.summary || 'Заметка без названия',
           sub: [formatDate(a.date), contactName(a.contactId) || companyName(a.companyId)]
             .filter(Boolean).join(' · '),
           icon: activityTypeInfo(a.type).icon,
@@ -179,7 +179,7 @@ function emptyStateGroups() {
     ...store.deals.map((d) => ({ at: d.updatedAt, node: {
       key: `deal-${d.id}`,
       title: d.name,
-      sub: [rateText(d, store.settings.currency), `updated ${timeAgo(d.updatedAt)}`].join(' · '),
+      sub: [rateText(d, store.settings.currency), `изменена ${timeAgo(d.updatedAt)}`].join(' · '),
       trailing: stageBadge(d.stage),
       icon: 'deal',
       run: goTo(`#/pipeline?id=${d.id}`),
@@ -191,7 +191,7 @@ function emptyStateGroups() {
         node: {
           key: `lead-${c.id}`,
           title: c.name,
-          sub: last ? `Last touch ${sinceLabel(last).text}` : 'No contact logged',
+          sub: last ? `Последнее касание ${sinceLabel(last).text}` : 'Записей нет',
           lead: avatar(c.name),
           run: goTo(`#/leads?id=${c.id}`),
         },
@@ -200,8 +200,8 @@ function emptyStateGroups() {
   ].sort((a, b) => b.at - a.at).slice(0, MAX_RECENT).map((r) => r.node);
 
   return [
-    { key: 'actions', label: 'Actions', items: quickActions().slice(0, 4) },
-    { key: 'recent', label: 'Recent', items: recent },
+    { key: 'actions', label: 'Действия', items: quickActions().slice(0, 4) },
+    { key: 'recent', label: 'Недавние', items: recent },
   ].filter((g) => g.items.length);
 }
 
@@ -224,8 +224,8 @@ export function openPalette() {
   // active option that aria-activedescendant points at.
   const input = el('input.input.palette-input', {
     type: 'text',
-    placeholder: 'Search leads, companies, deals, follow-ups…',
-    'aria-label': 'Search everything',
+    placeholder: 'Поиск по контактам, компаниям, сделкам, задачам…',
+    'aria-label': 'Поиск по всему',
     role: 'combobox',
     'aria-expanded': 'true',
     'aria-autocomplete': 'list',
@@ -238,13 +238,13 @@ export function openPalette() {
   const results = el('div.palette-results', {
     id: 'palette-results',
     role: 'listbox',
-    'aria-label': 'Search results',
+    'aria-label': 'Результаты поиска',
   });
 
   const head = el('div.palette-head', {},
     el('span.palette-icon', { html: icon('search', 18, 2), 'aria-hidden': 'true' }),
     input,
-    el('button.icon-btn', { html: icon('x', 18), 'aria-label': 'Close search', onclick: () => modal.close() })
+    el('button.icon-btn', { html: icon('x', 18), 'aria-label': 'Закрыть поиск', onclick: () => modal.close() })
   );
 
   function groupsFor(query) {
@@ -258,7 +258,7 @@ export function openPalette() {
       }))
       .filter((g) => g.items.length);
     // Records first: a query is far more often a name than a command.
-    return actions.length ? [...found, { key: 'actions', label: 'Actions', items: actions }] : found;
+    return actions.length ? [...found, { key: 'actions', label: 'Действия', items: actions }] : found;
   }
 
   function render() {
@@ -273,8 +273,8 @@ export function openPalette() {
       input.removeAttribute('aria-activedescendant');
       results.append(el('div.palette-empty', {},
         el('span', { html: icon('search', 22, 1.8), 'aria-hidden': 'true' }),
-        el('p', {}, `Nothing matches “${query}”`),
-        el('p.palette-empty-sub', {}, 'Try a name, a company, or part of a note.')
+        el('p', {}, `По запросу «${query}» ничего не найдено`),
+        el('p.palette-empty-sub', {}, 'Попробуйте имя, компанию или часть заметки.')
       ));
       return;
     }
@@ -380,7 +380,7 @@ export function openPalette() {
   });
 
   const modal = openModal({
-    title: 'Search',
+    title: 'Быстрый поиск',
     head,
     content: results,
     variant: 'palette',

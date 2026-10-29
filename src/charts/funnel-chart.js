@@ -14,9 +14,14 @@
 
 import { el } from '../ui/dom.js';
 import { stageBadge } from '../ui/bits.js';
+import { countLabel, plural } from '../lib/util.js';
 
 const pct = (n) => `${Math.round(n * 100)}%`;
-const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const DEALS = ['сделка', 'сделки', 'сделок'];
+/** "3 сделки дошли" / "1 сделка дошла": the count with its verb agreeing. */
+const dealsDid = (n, verb) => `${countLabel(n, DEALS)} ${plural(n, verb)}`;
+const REACHED = ['дошла', 'дошли', 'дошли'];
+const ADVANCED = ['прошла дальше', 'прошли дальше', 'прошли дальше'];
 
 /**
  * `rows` come from funnelReport(); `stages` is the configured list, so a
@@ -29,34 +34,34 @@ export function funnelChart(rows, stages) {
     el('div.chart-legend', {},
       el('span.legend-key', {},
         el('span.tip-swatch', { dataset: { kind: 'advanced' }, 'aria-hidden': 'true' }),
-        'Advanced past this stage'),
+        'Прошли дальше этого этапа'),
       el('span.legend-key', {},
         el('span.tip-swatch', { dataset: { kind: 'stalled-here' }, 'aria-hidden': 'true' }),
-        'Lost or still here')
+        'Проиграны или ещё здесь')
     ),
     rows.map((row) => {
       const width = (row.entered / max) * 100;
       const fill = row.entered ? (row.advanced / row.entered) * 100 : 0;
       const words = row.entered
         ? [
-            `${plural(row.advanced, 'deal')} advanced`,
+            dealsDid(row.advanced, ADVANCED),
             row.advanceRate === null ? null : pct(row.advanceRate),
             row.lostHere
-              ? `${row.lostHere} lost here${row.lossShare ? ` · ${pct(row.lossShare)} of all losses` : ''}`
+              ? `проиграно здесь: ${row.lostHere}${row.lossShare ? ` · ${pct(row.lossShare)} всех проигрышей` : ''}`
               : null,
-            row.open ? `${row.open} still in play` : null,
+            row.open ? `в работе: ${row.open}` : null,
           ].filter(Boolean).join(' · ')
-        : 'No deal has reached this stage yet';
+        : 'До этого этапа пока не дошла ни одна сделка';
 
       return el('div.funnel-row', {},
         el('div.funnel-head', {},
           stageBadge(row.stage, stages),
           el('span.funnel-count', {},
-            row.entered ? `${plural(row.entered, 'deal')} reached it` : 'never reached')
+            row.entered ? dealsDid(row.entered, REACHED) : 'никто не дошёл')
         ),
         el('div.funnel-track', {
           role: 'img',
-          'aria-label': `${row.label}: ${plural(row.entered, 'deal')} reached it, ${row.advanced} advanced`
+          'aria-label': `${row.label}: ${dealsDid(row.entered, REACHED)}, дальше прошли ${row.advanced}`
             + (row.advanceRate === null ? '' : ` (${pct(row.advanceRate)})`),
         },
           el('div.funnel-bar', { style: { width: `${Math.max(width, row.entered ? 3 : 0)}%` } },

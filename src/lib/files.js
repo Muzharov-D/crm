@@ -48,9 +48,9 @@ export function safeFileName(name) {
 /** Human-readable size: "412 KB", "2.4 MB". */
 export function formatBytes(bytes) {
   const n = Number(bytes) || 0;
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
-  return `${(Math.round((n / (1024 * 1024)) * 10) / 10)} MB`;
+  if (n < 1024) return `${n} Б`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} КБ`;
+  return `${String(Math.round((n / (1024 * 1024)) * 10) / 10).replace('.', ',')} МБ`;
 }
 
 /**
@@ -65,7 +65,7 @@ export async function uploadFile(file) {
 
 /** The file's bytes back, as a Blob. Only ever from the app's own directory. */
 export function readFile(path) {
-  if (!isAppFilePath(path)) return Promise.reject(new Error('Not an attachment path'));
+  if (!isAppFilePath(path)) return Promise.reject(new Error('Недопустимый путь к файлу'));
   return puter.fs.read(path);
 }
 

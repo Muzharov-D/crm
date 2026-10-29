@@ -102,20 +102,20 @@ describe('playbookTasks', () => {
 
 describe('words', () => {
   it('says when a step lands', () => {
-    expect(offsetLabel(0)).toBe('the day it is applied');
-    expect(offsetLabel(1)).toBe('the next day');
-    expect(offsetLabel(7)).toBe('1 week later');
-    expect(offsetLabel(14)).toBe('2 weeks later');
-    expect(offsetLabel(5)).toBe('5 days later');
+    expect(offsetLabel(0)).toBe('в день применения');
+    expect(offsetLabel(1)).toBe('на следующий день');
+    expect(offsetLabel(7)).toBe('через 1 неделю');
+    expect(offsetLabel(14)).toBe('через 2 недели');
+    expect(offsetLabel(5)).toBe('через 5 дней');
   });
 
   it('sums a playbook up in one line', () => {
-    expect(playbookSummary(book())).toBe('2 steps · over 3 days');
+    expect(playbookSummary(book())).toBe('2 шага · за 3 дня');
     expect(playbookSummary(book({ steps: [{ title: 'a', offset: 14 }] })))
-      .toBe('1 step · over 2 weeks');
+      .toBe('1 шаг · за 2 недели');
     expect(playbookSummary(book({ steps: [{ title: 'a', offset: 0 }] })))
-      .toBe('1 step · all on the same day');
-    expect(playbookSummary(book({ steps: [] }))).toBe('No steps yet');
+      .toBe('1 шаг · в тот же день');
+    expect(playbookSummary(book({ steps: [] }))).toBe('Шагов пока нет');
   });
 
   it('mints a blank playbook with one empty step', () => {

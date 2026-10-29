@@ -79,7 +79,8 @@ export const COMPANY_DRAFT_FIELDS = ['name', 'industry', 'website'];
 
 const jsonInstruction = (fields) =>
   `Reply with one JSON object and nothing else - no prose, no code fence. Use exactly these keys: ${fields.join(', ')}. `
-  + 'Leave a value as an empty string when the text does not say. Never invent a value.';
+  + 'Leave a value as an empty string when the text does not say. Never invent a value. '
+  + 'Copy values as written in the text, without translating them.';
 
 export function contactPrompt(text) {
   return `Pull the contact details out of the text below.\n\n${jsonInstruction(CONTACT_DRAFT_FIELDS)}\n`
@@ -139,7 +140,7 @@ const line = (label, value) => (value ? `${label}: ${value}\n` : '');
  */
 export function recordContext({
   contact = null, company = null, deal = null, activities = [], tasks = [],
-  currency = 'USD', dealRate = null,
+  currency = 'RUB', dealRate = null,
 } = {}) {
   let out = '';
   if (contact) {
@@ -183,7 +184,8 @@ export function recordContext({
 export function emailPrompt(context, { subject = '', body = '', sender = '' } = {}) {
   return 'Write a short, plain sales email to the contact below, from what the record says. '
     + 'Two or three sentences, specific to what actually happened, no filler, no subject line, '
-    + 'no placeholder brackets. Reply with the email body only.\n'
+    + 'no placeholder brackets. Write it in Russian, in a polite business tone (address the contact formally, "вы"). '
+    + 'Reply with the email body only.\n'
     + (subject ? `\nThe subject line is already: ${subject}\n` : '')
     + (body ? `\nThere is a draft already; improve it rather than starting over:\n"""\n${body}\n"""\n` : '')
     + (sender ? `\nSign off as ${sender}.\n` : '')
@@ -196,6 +198,6 @@ export function summaryPrompt(context) {
   return 'Sum up where this stands for the person selling, in at most four short lines: '
     + 'what has happened, what is outstanding, and the single next thing worth doing. '
     + 'Use only what the record says - do not guess, and say plainly if something important is missing. '
-    + 'Plain sentences, no headings, no bullet characters.\n'
+    + 'Plain sentences, no headings, no bullet characters. Answer in Russian.\n'
     + `\nRecord:\n"""\n${context}\n"""`;
 }

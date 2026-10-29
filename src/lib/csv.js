@@ -10,7 +10,8 @@
  */
 
 import { todayISO, isValidISODate } from './util.js';
-import { CONTACT_STATUSES } from './statuses.js';
+import { CONTACT_STATUSES, activityTypeInfo } from './statuses.js';
+import { STAGES } from './forecast.js';
 import { repeatLabel } from './repeat.js';
 import {
   BILLING_MODES, billingLabel, contractValue, isRecurring, mrrOf, normalizeTerm,
@@ -168,6 +169,16 @@ export function parseMoney(value) {
 }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+/* Russian month names by their first three letters, in every case a date
+   is written in: "12 авг 2026", "12 августа 2026", "май 2026" / "мая". */
+const MONTHS_RU = {
+  янв: 1, фев: 2, мар: 3, апр: 4, май: 5, мая: 5, июн: 6,
+  июл: 7, авг: 8, сен: 9, окт: 10, ноя: 11, дек: 12,
+};
+const monthNumber = (name) => {
+  const key = name.toLowerCase().slice(0, 3);
+  return MONTHS.indexOf(key) + 1 || MONTHS_RU[key] || 0;
+};
 const pad = (n) => String(n).padStart(2, '0');
 
 /** Assemble YYYY-MM-DD, but only if the parts name a day that exists. */
@@ -204,25 +215,29 @@ export function parseDateLoose(value) {
       ?? toISO(year, ...(monthFirst ? [b, a] : [a, b]));
   }
 
-  const named = raw.match(/^(\d{1,2})[\s-]*([a-z]{3,})[\s-]*(\d{4})$/i)
-    || raw.match(/^([a-z]{3,})[\s-]*(\d{1,2}),?[\s-]*(\d{4})$/i);
+  // A Russian date may carry a trailing "г." ("12 августа 2026 г.").
+  const plain = raw.replace(/\s*г\.?$/i, '');
+  const named = plain.match(/^(\d{1,2})[\s-]*([a-zа-яё]{3,})\.?[\s-]*(\d{4})$/i)
+    || plain.match(/^([a-zа-яё]{3,})\.?[\s-]*(\d{1,2}),?[\s-]*(\d{4})$/i);
   if (named) {
-    const isDayFirst = /^\d/.test(raw);
+    const isDayFirst = /^\d/.test(plain);
     const day = isDayFirst ? named[1] : named[2];
-    const monthName = (isDayFirst ? named[2] : named[1]).slice(0, 3).toLowerCase();
-    const month = MONTHS.indexOf(monthName) + 1;
+    const month = monthNumber(isDayFirst ? named[2] : named[1]);
     if (month) return toISO(named[3], month, day);
   }
   return null;
 }
 
 export function parseBool(value) {
-  return /^(y|yes|true|1|done|complete[d]?|x)$/i.test(String(value ?? '').trim());
+  return /^(y|yes|true|1|done|complete[d]?|x|да|д|истина|готово|сделано|выполнено|выполнена)$/i
+    .test(String(value ?? '').trim());
 }
 
 /* ---------- column specs ---------- */
 
-const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+/* Headers and values compare letters and digits only, Latin or Cyrillic:
+   "E-Mail" is "email", "Эл. почта" is "элпочта", and ё reads as е. */
+const norm = (s) => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-z0-9а-я]+/g, '');
 
 /**
  * Fields each entity accepts on import. `aliases` are the spreadsheet
@@ -230,35 +245,35 @@ const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
  */
 export const IMPORT_FIELDS = {
   contacts: [
-    { key: 'name', label: 'Name', required: true, aliases: ['full name', 'contact', 'lead', 'person', 'contact name'] },
-    { key: 'email', label: 'Email', aliases: ['e-mail', 'email address', 'work email'] },
-    { key: 'phone', label: 'Phone', aliases: ['telephone', 'mobile', 'phone number'] },
-    { key: 'title', label: 'Job title', aliases: ['role', 'position', 'job'] },
-    { key: 'company', label: 'Company', aliases: ['organisation', 'organization', 'account', 'employer'] },
-    { key: 'source', label: 'Source', aliases: ['lead source', 'channel'] },
-    { key: 'status', label: 'Status', aliases: ['stage', 'lifecycle'] },
-    { key: 'tags', label: 'Tags', aliases: ['tag', 'labels', 'label'] },
-    { key: 'notes', label: 'Notes', aliases: ['comments', 'description'] },
+    { key: 'name', label: 'Имя', required: true, aliases: ['фио', 'контакт', 'имя контакта', 'полное имя', 'name', 'full name', 'contact', 'lead', 'person', 'contact name'] },
+    { key: 'email', label: 'Эл. почта', aliases: ['почта', 'электронная почта', 'адрес почты', 'e-mail', 'email address', 'work email'] },
+    { key: 'phone', label: 'Телефон', aliases: ['мобильный', 'номер телефона', 'phone', 'telephone', 'mobile', 'phone number'] },
+    { key: 'title', label: 'Должность', aliases: ['позиция', 'роль', 'job title', 'role', 'position', 'job'] },
+    { key: 'company', label: 'Компания', aliases: ['организация', 'работодатель', 'company', 'organisation', 'organization', 'account', 'employer'] },
+    { key: 'source', label: 'Источник', aliases: ['канал', 'источник лида', 'source', 'lead source', 'channel'] },
+    { key: 'status', label: 'Статус', aliases: ['этап', 'status', 'stage', 'lifecycle'] },
+    { key: 'tags', label: 'Метки', aliases: ['метка', 'теги', 'tags', 'tag', 'labels', 'label'] },
+    { key: 'notes', label: 'Заметки', aliases: ['примечание', 'примечания', 'комментарии', 'описание', 'notes', 'comments', 'description'] },
   ],
   companies: [
-    { key: 'name', label: 'Name', required: true, aliases: ['company', 'company name', 'account', 'organisation', 'organization'] },
-    { key: 'industry', label: 'Industry', aliases: ['sector', 'vertical'] },
-    { key: 'website', label: 'Website', aliases: ['url', 'domain', 'site'] },
-    { key: 'size', label: 'Company size', aliases: ['employees', 'headcount', 'size'] },
-    { key: 'tags', label: 'Tags', aliases: ['tag', 'labels', 'label'] },
-    { key: 'notes', label: 'Notes', aliases: ['comments', 'description'] },
+    { key: 'name', label: 'Название', required: true, aliases: ['компания', 'название компании', 'организация', 'name', 'company', 'company name', 'account', 'organisation', 'organization'] },
+    { key: 'industry', label: 'Отрасль', aliases: ['сфера', 'индустрия', 'сектор', 'industry', 'sector', 'vertical'] },
+    { key: 'website', label: 'Сайт', aliases: ['веб-сайт', 'домен', 'website', 'url', 'domain', 'site'] },
+    { key: 'size', label: 'Сотрудники', aliases: ['размер', 'размер компании', 'численность', 'штат', 'company size', 'employees', 'headcount', 'size'] },
+    { key: 'tags', label: 'Метки', aliases: ['метка', 'теги', 'tags', 'tag', 'labels', 'label'] },
+    { key: 'notes', label: 'Заметки', aliases: ['примечание', 'примечания', 'комментарии', 'описание', 'notes', 'comments', 'description'] },
   ],
   deals: [
-    { key: 'name', label: 'Deal name', required: true, aliases: ['deal', 'opportunity', 'title'] },
-    { key: 'value', label: 'Value', aliases: ['amount', 'price', 'revenue', 'deal value', 'mrr', 'arr'] },
-    { key: 'billing', label: 'Billing', aliases: ['billing cycle', 'billing period', 'recurrence', 'frequency', 'billing frequency', 'plan'] },
-    { key: 'term', label: 'Term', aliases: ['contract term', 'term months', 'term (months)', 'contract length', 'months'] },
-    { key: 'stage', label: 'Stage', aliases: ['status', 'pipeline stage'] },
-    { key: 'company', label: 'Company', aliases: ['account', 'organisation', 'organization'] },
-    { key: 'contact', label: 'Contact', aliases: ['lead', 'person', 'contact name'] },
-    { key: 'expectedClose', label: 'Expected close', aliases: ['close date', 'expected close date', 'closing'] },
-    { key: 'tags', label: 'Tags', aliases: ['tag', 'labels', 'label'] },
-    { key: 'notes', label: 'Notes', aliases: ['comments', 'description'] },
+    { key: 'name', label: 'Название', required: true, aliases: ['сделка', 'название сделки', 'name', 'deal name', 'deal', 'opportunity', 'title'] },
+    { key: 'value', label: 'Сумма', aliases: ['стоимость', 'цена', 'бюджет', 'сумма сделки', 'выручка', 'value', 'amount', 'price', 'revenue', 'deal value', 'mrr', 'arr'] },
+    { key: 'billing', label: 'Оплата', aliases: ['тип оплаты', 'периодичность', 'периодичность оплаты', 'billing', 'billing cycle', 'billing period', 'recurrence', 'frequency', 'billing frequency', 'plan'] },
+    { key: 'term', label: 'Срок (мес.)', aliases: ['срок договора', 'срок, мес', 'месяцев', 'term', 'contract term', 'term months', 'term (months)', 'contract length', 'months'] },
+    { key: 'stage', label: 'Этап', aliases: ['статус', 'стадия', 'этап воронки', 'stage', 'status', 'pipeline stage'] },
+    { key: 'company', label: 'Компания', aliases: ['организация', 'клиент', 'company', 'account', 'organisation', 'organization'] },
+    { key: 'contact', label: 'Контакт', aliases: ['контактное лицо', 'имя контакта', 'contact', 'lead', 'person', 'contact name'] },
+    { key: 'expectedClose', label: 'Дата закрытия', aliases: ['ожидаемая дата закрытия', 'срок закрытия', 'закрытие', 'expected close', 'close date', 'expected close date', 'closing'] },
+    { key: 'tags', label: 'Метки', aliases: ['метка', 'теги', 'tags', 'tag', 'labels', 'label'] },
+    { key: 'notes', label: 'Заметки', aliases: ['примечание', 'примечания', 'комментарии', 'описание', 'notes', 'comments', 'description'] },
   ],
 };
 
@@ -323,14 +338,28 @@ export function customCellText(field, record) {
   return formatFieldValue(field, value);
 }
 
-/* `one` is the singular the wizard speaks in. Trimming an "s" off the
-   label gets "lead" and "deal" and then "an existing companie".
-   `matchKey` is the field the merge matches on, so the wizard can tell
-   whether the file actually offers it. */
+/* The words the wizard speaks in about each kind, already in the case
+   each sentence needs - Russian can't build "an existing company" from
+   the label the way English trimmed an "s" off it. `matchOn` follows
+   "по", `existing` follows "совпадает", `many` follows a verb
+   ("Добавлено контактов"). `matchKey` is the field the merge matches on,
+   so the wizard can tell whether the file actually offers it. */
 export const IMPORT_KINDS = [
-  { key: 'contacts', label: 'Leads', one: 'lead', icon: 'users', matchOn: 'email address', matchKey: 'email' },
-  { key: 'companies', label: 'Companies', one: 'company', icon: 'company', matchOn: 'name', matchKey: 'name' },
-  { key: 'deals', label: 'Deals', one: 'deal', icon: 'deal', matchOn: 'name', matchKey: 'name' },
+  {
+    key: 'contacts', label: 'Контакты', icon: 'users', matchOn: 'эл. почте', matchKey: 'email',
+    title: 'Импорт контактов', existing: 'с существующим контактом', newOne: 'новый контакт',
+    many: 'контактов', noName: 'без имени',
+  },
+  {
+    key: 'companies', label: 'Компании', icon: 'company', matchOn: 'названию', matchKey: 'name',
+    title: 'Импорт компаний', existing: 'с существующей компанией', newOne: 'новая компания',
+    many: 'компаний', noName: 'без названия',
+  },
+  {
+    key: 'deals', label: 'Сделки', icon: 'deal', matchOn: 'названию', matchKey: 'name',
+    title: 'Импорт сделок', existing: 'с существующей сделкой', newOne: 'новая сделка',
+    many: 'сделок', noName: 'без названия',
+  },
 ];
 
 /**
@@ -371,11 +400,21 @@ export function mapRows(rows, mapping) {
   });
 }
 
+/* The names statuses went by before the interface spoke Russian, so a
+   file exported back then (or kept in English) still reads. */
+const LEGACY_STATUS_LABELS = {
+  lead: ['Lead'],
+  active: ['In conversation', 'Active', 'Активный'],
+  customer: ['Customer', 'Client'],
+  lost: ['Lost touch', 'Lost'],
+};
+
 /** Match a free-text status against the app's list; unknown falls to `fallback`. */
 export function matchStatus(value, fallback = 'lead') {
   const wanted = norm(value);
   if (!wanted) return fallback;
-  const hit = CONTACT_STATUSES.find((s) => norm(s.value) === wanted || norm(s.label) === wanted);
+  const hit = CONTACT_STATUSES.find((s) => norm(s.value) === wanted || norm(s.label) === wanted
+    || (LEGACY_STATUS_LABELS[s.value] || []).some((l) => norm(l) === wanted));
   return hit ? hit.value : fallback;
 }
 
@@ -392,8 +431,11 @@ export function matchBilling(value, fallback = 'one-time') {
   const hit = BILLING_MODES.find((m) => norm(m.value) === wanted || norm(m.label) === wanted);
   if (hit) return hit.value;
   if (/^(month|monthly|permonth|mo|mrr|recurringmonthly|monthlyrecurring|subscriptionmonthly)$/.test(wanted)) return 'monthly';
+  if (/^(вмесяц|месяц|мес|ежемесячно|ежемесячная|ежемесячный|помесячно|помесячная|ежемесячнаяподписка)$/.test(wanted)) return 'monthly';
   if (/^(year|yearly|annual|annually|peryear|yr|arr|recurringannual|annualrecurring|subscriptionannual)$/.test(wanted)) return 'annual';
+  if (/^(вгод|год|ежегодно|ежегодная|ежегодный|годовая|годовой|погодно|ежегоднаяподписка)$/.test(wanted)) return 'annual';
   if (/^(onetime|onceoff|oneoff|once|single|nonrecurring|flat|fixed|upfront)$/.test(wanted)) return 'one-time';
+  if (/^(разово|разовая|разовый|единоразово|единовременно|однократно|разоваяоплата|предоплата)$/.test(wanted)) return 'one-time';
   return fallback;
 }
 
@@ -403,16 +445,36 @@ export function parseTerm(value) {
   if (!/\d/.test(raw)) return '';
   const n = Number.parseFloat(raw.replace(/[^\d.]/g, ''));
   if (!Number.isFinite(n) || n <= 0) return '';
-  // "1 year" / "2 yrs" are terms too, and they are years, not months.
-  return /y(ea)?rs?\b/i.test(raw) ? normalizeTerm(n * 12) : normalizeTerm(n);
+  // "1 year" / "2 yrs" / "2 года" / "5 лет" are terms too, and they are
+  // years, not months.
+  return /y(ea)?rs?\b|год|лет/i.test(raw) ? normalizeTerm(n * 12) : normalizeTerm(n);
 }
 
-/** Match a stage by id or label against the configured funnel. */
+/* Names the built-in stages answer to beyond their current label: the
+   English ones files were exported under before, and the everyday
+   spellings of a closed deal. Used only for stages the funnel still has. */
+const STAGE_ALIASES = {
+  new: ['New'],
+  qualified: ['Qualified', 'Qualification'],
+  proposal: ['Proposal', 'КП', 'Коммерческое предложение'],
+  negotiation: ['Negotiation'],
+  won: ['Won', 'Closed won', 'Выиграно', 'Выигран', 'Успешно'],
+  lost: ['Lost', 'Closed lost', 'Проиграно', 'Проигран', 'Отказ'],
+};
+
+/**
+ * Match a stage by id or label against the configured funnel, then by
+ * the default funnel's names (Russian and the old English ones), so
+ * "Proposal" and "Предложение" both land on a funnel that still has it.
+ */
 export function matchStage(value, stages, fallback) {
   const wanted = norm(value);
   if (!wanted) return fallback;
   const hit = stages.find((s) => norm(s.id) === wanted || norm(s.label) === wanted);
-  return hit ? hit.id : fallback;
+  if (hit) return hit.id;
+  const known = STAGES.find((s) => norm(s.label) === wanted
+    || (STAGE_ALIASES[s.id] || []).some((a) => norm(a) === wanted));
+  return known && stages.some((s) => s.id === known.id) ? known.id : fallback;
 }
 
 /* ---------- export ---------- */
@@ -423,91 +485,91 @@ export function matchStage(value, stages, fallback) {
  */
 export const EXPORT_SETS = {
   contacts: {
-    label: 'Leads',
+    label: 'Контакты',
     icon: 'users',
     columns: [
-      ['Name', (c) => c.name],
-      ['Job title', (c) => c.title],
-      ['Email', (c) => c.email],
-      ['Phone', (c) => c.phone],
-      ['Company', (c, ctx) => ctx.companyName(c.companyId)],
-      ['Source', (c) => c.source],
-      ['Status', (c) => CONTACT_STATUSES.find((s) => s.value === c.status)?.label || c.status],
-      ['Tags', (c) => (c.tags || []).join(', ')],
-      ['Last contacted', (c, ctx) => ctx.lastContacted(c.id) || ''],
-      ['Notes', (c) => c.notes],
-      ['Created', (c) => isoDay(c.createdAt)],
+      ['Имя', (c) => c.name],
+      ['Должность', (c) => c.title],
+      ['Эл. почта', (c) => c.email],
+      ['Телефон', (c) => c.phone],
+      ['Компания', (c, ctx) => ctx.companyName(c.companyId)],
+      ['Источник', (c) => c.source],
+      ['Статус', (c) => CONTACT_STATUSES.find((s) => s.value === c.status)?.label || c.status],
+      ['Метки', (c) => (c.tags || []).join(', ')],
+      ['Последний контакт', (c, ctx) => ctx.lastContacted(c.id) || ''],
+      ['Заметки', (c) => c.notes],
+      ['Создан', (c) => isoDay(c.createdAt)],
     ],
     rows: (store) => [...store.contacts].sort((a, b) => a.name.localeCompare(b.name)),
   },
   companies: {
-    label: 'Companies',
+    label: 'Компании',
     icon: 'company',
     columns: [
-      ['Name', (c) => c.name],
-      ['Industry', (c) => c.industry],
-      ['Website', (c) => c.website],
-      ['Company size', (c) => c.size],
-      ['Tags', (c) => (c.tags || []).join(', ')],
-      ['Notes', (c) => c.notes],
-      ['Created', (c) => isoDay(c.createdAt)],
+      ['Название', (c) => c.name],
+      ['Отрасль', (c) => c.industry],
+      ['Сайт', (c) => c.website],
+      ['Сотрудники', (c) => c.size],
+      ['Метки', (c) => (c.tags || []).join(', ')],
+      ['Заметки', (c) => c.notes],
+      ['Создана', (c) => isoDay(c.createdAt)],
     ],
     rows: (store) => [...store.companies].sort((a, b) => a.name.localeCompare(b.name)),
   },
   deals: {
-    label: 'Deals',
+    label: 'Сделки',
     icon: 'deal',
     columns: [
-      ['Name', (d) => d.name],
-      ['Value', (d) => d.value],
+      ['Название', (d) => d.name],
+      ['Сумма', (d) => d.value],
       // Billing and term make the Value column readable: $2,000 means one
       // thing on a one-time deal and another on a monthly one. Contract
       // value and MRR are derived, exported so a spreadsheet can total a
       // book of subscriptions without re-deriving them, and ignored on the
       // way back in - Value plus Billing plus Term is the whole truth.
-      ['Billing', (d) => billingLabel(d)],
-      ['Term (months)', (d) => (isRecurring(d) ? d.term : '')],
-      ['Contract value', (d) => contractValue(d)],
-      ['MRR', (d) => (isRecurring(d) ? mrrOf(d) : '')],
-      ['Stage', (d, ctx) => ctx.stageLabel(d.stage)],
-      ['Company', (d, ctx) => ctx.companyName(d.companyId)],
-      ['Contact', (d, ctx) => ctx.contactName(d.contactId)],
-      ['Expected close', (d) => d.expectedClose || ''],
-      ['Tags', (d) => (d.tags || []).join(', ')],
-      ['Close reason', (d) => d.closeReason],
-      ['Close detail', (d) => d.closeReasonNote],
-      ['Notes', (d) => d.notes],
-      ['Created', (d) => isoDay(d.createdAt)],
-      ['Last updated', (d) => isoDay(d.updatedAt)],
-      ['Closed', (d) => (d.closedAt ? isoDay(d.closedAt) : '')],
+      ['Оплата', (d) => billingLabel(d)],
+      ['Срок (мес.)', (d) => (isRecurring(d) ? d.term : '')],
+      ['Сумма договора', (d) => contractValue(d)],
+      ['Платёж в месяц', (d) => (isRecurring(d) ? mrrOf(d) : '')],
+      ['Этап', (d, ctx) => ctx.stageLabel(d.stage)],
+      ['Компания', (d, ctx) => ctx.companyName(d.companyId)],
+      ['Контакт', (d, ctx) => ctx.contactName(d.contactId)],
+      ['Дата закрытия', (d) => d.expectedClose || ''],
+      ['Метки', (d) => (d.tags || []).join(', ')],
+      ['Причина', (d) => d.closeReason],
+      ['Комментарий к причине', (d) => d.closeReasonNote],
+      ['Заметки', (d) => d.notes],
+      ['Создана', (d) => isoDay(d.createdAt)],
+      ['Обновлена', (d) => isoDay(d.updatedAt)],
+      ['Закрыта', (d) => (d.closedAt ? isoDay(d.closedAt) : '')],
     ],
     rows: (store) => [...store.deals].sort((a, b) => b.updatedAt - a.updatedAt),
   },
   activities: {
-    label: 'Activity',
+    label: 'История',
     icon: 'video',
     columns: [
-      ['Date', (a) => a.date],
-      ['Type', (a) => a.type],
-      ['Summary', (a) => a.summary],
-      ['Notes', (a) => a.notes],
-      ['Contact', (a, ctx) => ctx.contactName(a.contactId)],
-      ['Company', (a, ctx) => ctx.companyName(a.companyId)],
-      ['Deal', (a, ctx) => ctx.dealName(a.dealId)],
+      ['Дата', (a) => a.date],
+      ['Тип', (a) => (a.type ? activityTypeInfo(a.type).label : '')],
+      ['Тема', (a) => a.summary],
+      ['Заметки', (a) => a.notes],
+      ['Контакт', (a, ctx) => ctx.contactName(a.contactId)],
+      ['Компания', (a, ctx) => ctx.companyName(a.companyId)],
+      ['Сделка', (a, ctx) => ctx.dealName(a.dealId)],
     ],
     rows: (store) => store.recentActivities(Infinity),
   },
   tasks: {
-    label: 'Follow-ups',
+    label: 'Задачи',
     icon: 'followups',
     columns: [
-      ['Title', (t) => t.title],
-      ['Due', (t) => t.due],
-      ['Time', (t) => t.dueTime],
-      ['Repeats', (t) => repeatLabel(t.repeat)],
-      ['Done', (t) => (t.done ? 'Yes' : 'No')],
-      ['Contact', (t, ctx) => ctx.contactName(t.contactId)],
-      ['Deal', (t, ctx) => ctx.dealName(t.dealId)],
+      ['Задача', (t) => t.title],
+      ['Срок', (t) => t.due],
+      ['Время', (t) => t.dueTime],
+      ['Повтор', (t) => repeatLabel(t.repeat)],
+      ['Выполнена', (t) => (t.done ? 'Да' : 'Нет')],
+      ['Контакт', (t, ctx) => ctx.contactName(t.contactId)],
+      ['Сделка', (t, ctx) => ctx.dealName(t.dealId)],
     ],
     rows: (store) => [...store.tasks].sort((a, b) => a.due.localeCompare(b.due)),
   },

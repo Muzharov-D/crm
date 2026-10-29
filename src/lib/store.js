@@ -122,7 +122,7 @@ export { CONTACT_STATUSES } from './statuses.js';
 export { normalizeRepeat, nextRepeatDue, repeatLabel } from './repeat.js';
 
 export const LEAD_SOURCES = [
-  'Referral', 'Website', 'Cold outreach', 'Conference', 'Social', 'Inbound', 'Other',
+  'Рекомендация', 'Сайт', 'Холодный контакт', 'Конференция', 'Соцсети', 'Входящая заявка', 'Другое',
 ];
 
 export { ACTIVITY_TYPES, activityTypeInfo } from './statuses.js';
@@ -1844,7 +1844,7 @@ class Store extends EventTarget {
       id: uid(),
       kind,
       at: Date.now(),
-      name: str(record.name) || str(record.title) || str(record.summary) || 'Untitled',
+      name: str(record.name) || str(record.title) || str(record.summary) || 'Без названия',
       record: JSON.parse(JSON.stringify(record)),
       refs,
     };

@@ -22,10 +22,10 @@ import { isTerminalStage, openStages } from './forecast.js';
  * one has no close date, and an expected one is a guess.
  */
 export const FUNNEL_WINDOWS = [
-  { value: 'all', label: 'All time' },
-  { value: 'quarter', label: 'Entered this quarter' },
-  { value: 'last-quarter', label: 'Entered last quarter' },
-  { value: 'year', label: 'Entered this year' },
+  { value: 'all', label: 'За всё время' },
+  { value: 'quarter', label: 'Пришли в этом квартале' },
+  { value: 'last-quarter', label: 'Пришли в прошлом квартале' },
+  { value: 'year', label: 'Пришли в этом году' },
 ];
 
 /** When a deal joined the funnel: its first stage entry, else its clock. */

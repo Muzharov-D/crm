@@ -12,6 +12,7 @@ import { icon } from './icons.js';
 import { openModal, confirmDialog } from './modal.js';
 import { toast } from './toast.js';
 import { store } from '../lib/store.js';
+import { plural } from '../lib/util.js';
 import { CONTACT_STATUSES } from '../lib/statuses.js';
 import { CLOSE_WINDOWS } from '../lib/forecast.js';
 import {
@@ -42,7 +43,7 @@ export function filterContext(kind) {
  */
 function filterWords() {
   return {
-    statusLabel: (value) => (value === 'cold' ? 'Going cold'
+    statusLabel: (value) => (value === 'cold' ? 'Остывает'
       : CONTACT_STATUSES.find((s) => s.value === value)?.label || value),
     stageLabel: (id) => store.stages().find((s) => s.id === id)?.label || id,
     windowLabel: (value) => CLOSE_WINDOWS.find((w) => w.value === value)?.label || value,
@@ -62,12 +63,12 @@ function filterSummary(kind, filters) {
 export function useView(kind, view) {
   const { filters, dropped } = applyFilters(kind, view.filters, filterContext(kind));
   if (dropped.length) {
-    toast(`${view.name} · ignoring ${dropped.join(' and ')}`, { icon: 'alert', duration: 7000 });
+    toast(`${view.name} · не учтено: ${dropped.join(' и ')}`, { icon: 'alert', duration: 7000 });
   }
   return filters;
 }
 
-const fail = () => toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+const fail = () => toast('Не удалось сохранить. Проверьте связь', { icon: 'wifiOff' });
 
 /**
  * The filters a list should open with: the view named in the URL (the
@@ -95,7 +96,7 @@ export function viewChips({ kind, filters, onApply, onChanged }) {
   const savable = !isEmptyFilters(kind, filters) && !active;
   if (!views.length && !savable) return null;
 
-  const row = el('div.view-chips', { role: 'group', 'aria-label': 'Saved views' });
+  const row = el('div.view-chips', { role: 'group', 'aria-label': 'Сохранённые фильтры' });
 
   for (const view of views) {
     const on = active?.id === view.id;
@@ -114,7 +115,7 @@ export function viewChips({ kind, filters, onApply, onChanged }) {
     row.append(el('button.icon-btn.view-menu', {
       type: 'button',
       html: icon('more', 15, 2),
-      'aria-label': `Manage the ${view.name} view`,
+      'aria-label': `Настроить фильтр «${view.name}»`,
       'aria-haspopup': 'dialog',
       dataset: { focusKey: `view-menu-${view.id}` },
       onclick: () => openViewMenu({ kind, view, onChanged }),
@@ -126,12 +127,12 @@ export function viewChips({ kind, filters, onApply, onChanged }) {
     row.append(el('button.filter-chip.view-save', {
       type: 'button',
       disabled: atCap,
-      title: atCap ? `${MAX_VIEWS} views is the limit for one list` : null,
+      title: atCap ? `Не больше ${MAX_VIEWS} ${plural(MAX_VIEWS, ['фильтра', 'фильтров', 'фильтров'])} на список` : null,
       dataset: { focusKey: 'view-save' },
       onclick: () => openSaveView({ kind, filters, onChanged }),
     },
       el('span', { html: icon('plus', 12, 2.6), 'aria-hidden': 'true' }),
-      'Save this view'
+      'Сохранить фильтр'
     ));
   }
 
@@ -142,7 +143,7 @@ export function viewChips({ kind, filters, onApply, onChanged }) {
 function openSaveView({ kind, filters, onChanged }) {
   const name = el('input.input', {
     type: 'text', id: 'view-name', required: true, maxlength: MAX_VIEW_NAME,
-    autocomplete: 'off', placeholder: 'e.g. Cold leads in SaaS',
+    autocomplete: 'off', placeholder: 'Например: остывшие контакты из SaaS',
   });
   const asDefault = el('input', { type: 'checkbox', id: 'view-default' });
 
@@ -161,32 +162,32 @@ function openSaveView({ kind, filters, onChanged }) {
       return;
     }
     modal.close();
-    toast(`View “${label}” saved`, { icon: 'check' });
+    toast(`Фильтр «${label}» сохранён`, { icon: 'check' });
     onChanged?.();
   };
 
   const form = el('form.form', { onsubmit: save },
     el('p.settings-note.sheet-note', {},
-      `Saved with the filters this list has on now: ${filterSummary(kind, filters)}. `
-      + 'It re-runs every time you open it.'),
+      `Сохранятся текущие условия списка: ${filterSummary(kind, filters)}. `
+      + 'Они применяются заново при каждом открытии.'),
     el('div.settings-body', {},
       el('div.field', {},
-        el('label.field-label', { for: 'view-name' }, 'View name'),
+        el('label.field-label', { for: 'view-name' }, 'Название фильтра'),
         name
       ),
       el('label.check-row', { for: 'view-default' },
         asDefault,
-        el('span', {}, `Open ${viewKind(kind)?.label.toLowerCase() || 'this list'} with it`)
+        el('span', {}, `Открывать ${viewKind(kind)?.label.toLowerCase() || 'этот список'} с этим фильтром`)
       )
     ),
     el('div.form-actions', {},
       el('div.grow'),
-      el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Cancel'),
-      el('button.btn.btn-primary', { type: 'submit' }, 'Save view')
+      el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Отмена'),
+      el('button.btn.btn-primary', { type: 'submit' }, 'Сохранить')
     )
   );
 
-  const modal = openModal({ title: 'Save this view', content: form, focusFirst: true });
+  const modal = openModal({ title: 'Сохранить фильтр', content: form, focusFirst: true });
   return modal;
 }
 
@@ -222,27 +223,27 @@ function openViewMenu({ kind, view, onChanged }) {
     title: view.name,
     content: el('div', {},
       el('div.settings-list', {},
-        row('pencil', 'Rename', null, () => {
+        row('pencil', 'Переименовать', null, () => {
           modal.close();
           setTimeout(() => openRenameView({ kind, view, onChanged }), 120);
         }),
         row(view.default ? 'circleX' : 'check',
-          view.default ? 'Stop opening with this' : 'Open this list with it',
-          view.default ? 'The list opens unfiltered again' : 'Applied whenever you arrive',
+          view.default ? 'Не открывать с этим фильтром' : 'Открывать список с этим фильтром',
+          view.default ? 'Список снова откроется без фильтров' : 'Применяется при каждом открытии',
           () => write(withDefault(views, view.default ? null : view.id),
-            view.default ? 'No longer the default' : `${view.name} is the default now`)),
-        at > 0 && row('chevU', 'Move earlier', null,
+            view.default ? 'Фильтр больше не по умолчанию' : `«${view.name}» теперь по умолчанию`)),
+        at > 0 && row('chevU', 'Переместить выше', null,
           () => write(reorderViews(views, view.id, -1))),
-        at < views.length - 1 && row('chevD', 'Move later', null,
+        at < views.length - 1 && row('chevD', 'Переместить ниже', null,
           () => write(reorderViews(views, view.id, 1))),
-        row('trash', 'Delete this view', 'The records it filtered are untouched', async () => {
+        row('trash', 'Удалить фильтр', 'Отфильтрованные данные не изменятся', async () => {
           const ok = await confirmDialog({
-            title: `Delete “${view.name}”?`,
-            message: 'Only the saved filter set goes. Nothing it matched is affected.',
-            confirmLabel: 'Delete view',
+            title: `Удалить «${view.name}»?`,
+            message: 'Удалится только набор условий. Данные, которые он находил, не изменятся.',
+            confirmLabel: 'Удалить фильтр',
           });
           if (!ok) return;
-          await write(views.filter((v) => v.id !== view.id), 'View deleted');
+          await write(views.filter((v) => v.id !== view.id), 'Фильтр удалён');
         })
       )
     ),
@@ -273,16 +274,16 @@ function openRenameView({ kind, view, onChanged }) {
   },
     el('div.settings-body', {},
       el('div.field', {},
-        el('label.field-label', { for: 'view-rename' }, 'View name'),
+        el('label.field-label', { for: 'view-rename' }, 'Название фильтра'),
         name
       )
     ),
     el('div.form-actions', {},
       el('div.grow'),
-      el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Cancel'),
-      el('button.btn.btn-primary', { type: 'submit' }, 'Rename')
+      el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Отмена'),
+      el('button.btn.btn-primary', { type: 'submit' }, 'Переименовать')
     )
   );
-  const modal = openModal({ title: 'Rename view', content: form, focusFirst: true });
+  const modal = openModal({ title: 'Переименовать фильтр', content: form, focusFirst: true });
   return modal;
 }

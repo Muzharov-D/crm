@@ -162,8 +162,8 @@ describe('confidence helpers', () => {
   });
 
   it('confidenceLabel names the categories and spells out custom values', () => {
-    expect(confidenceLabel(0.9)).toBe('Commit · 90%');
-    expect(confidenceLabel(0)).toBe('Omit · 0%');
+    expect(confidenceLabel(0.9)).toBe('Точно · 90%');
+    expect(confidenceLabel(0)).toBe('Не учитывать · 0%');
     expect(confidenceLabel(0.45)).toBe('45%');
     expect(confidenceLabel(null)).toBeNull();
   });
@@ -458,8 +458,8 @@ describe('win/loss analysis', () => {
   });
 
   it('offers outcome-appropriate starter reasons', () => {
-    expect(reasonsForStage('won')).toContain('Referral strength');
-    expect(reasonsForStage('lost')).toContain('Competitor');
+    expect(reasonsForStage('won')).toContain('Рекомендация');
+    expect(reasonsForStage('lost')).toContain('Конкурент');
   });
 });
 

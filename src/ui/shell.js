@@ -22,22 +22,22 @@ import { settingsView, confirmSignOut } from '../views/settings.js';
    tab: false live in the More sheet there. The desktop sidebar shows
    everything. */
 const ROUTES = [
-  { hash: '#/', label: 'Home', icon: 'dashboard', view: dashboardView },
-  { hash: '#/pipeline', label: 'Pipeline', icon: 'pipeline', view: pipelineView },
-  { hash: '#/leads', label: 'Leads', icon: 'users', view: leadsView },
-  { hash: '#/followups', label: 'Follow-ups', icon: 'followups', view: followupsView },
-  { hash: '#/companies', label: 'Companies', icon: 'company', view: companiesView, tab: false },
-  { hash: '#/activity', label: 'Activity', icon: 'video', view: activityView, tab: false },
-  { hash: '#/forecast', label: 'Forecast', icon: 'chart', view: forecastView, tab: false },
-  { hash: '#/settings', label: 'Settings', icon: 'gear', view: settingsView, tab: false },
+  { hash: '#/', label: 'Главная', icon: 'dashboard', view: dashboardView },
+  { hash: '#/pipeline', label: 'Воронка', icon: 'pipeline', view: pipelineView },
+  { hash: '#/leads', label: 'Контакты', icon: 'users', view: leadsView },
+  { hash: '#/followups', label: 'Задачи', icon: 'followups', view: followupsView },
+  { hash: '#/companies', label: 'Компании', icon: 'company', view: companiesView, tab: false },
+  { hash: '#/activity', label: 'История', icon: 'video', view: activityView, tab: false },
+  { hash: '#/forecast', label: 'Прогноз', icon: 'chart', view: forecastView, tab: false },
+  { hash: '#/settings', label: 'Настройки', icon: 'gear', view: settingsView, tab: false },
 ];
 
 /* One-line descriptions for the More sheet. */
 const MORE_SUBS = {
-  '#/companies': 'Accounts, their people, and their deals',
-  '#/activity': 'Every meeting, call, email, and note you logged',
-  '#/forecast': 'Weighted pipeline by expected close month',
-  '#/settings': 'Appearance, currency, stages, and your data',
+  '#/companies': 'Организации, их сотрудники и сделки',
+  '#/activity': 'Все записанные встречи, звонки, письма и заметки',
+  '#/forecast': 'Взвешенная воронка по месяцам закрытия',
+  '#/settings': 'Оформление, валюта, этапы и ваши данные',
 };
 
 /** Apple keyboards say ⌘K; everyone else says Ctrl K. */
@@ -63,25 +63,25 @@ export function mountShell(appRoot) {
     if (!store.settings.sampleData) return;
     sampleBanner.append(el('div.sample-banner', {},
       el('span.sample-banner-ic', { html: icon('sparkle', 14, 2.2) }),
-      el('span.grow', {}, 'Sample data: explore freely, nothing here is yours'),
+      el('span.grow', {}, 'Демо-данные: можно смело пробовать, ваших данных здесь нет'),
       el('button', {
         onclick: async () => {
           const ok = await confirmDialog({
-            title: 'Start fresh?',
-            message: 'All sample data is removed and you start with an empty CRM.',
-            confirmLabel: 'Wipe sample data',
+            title: 'Начать с чистого листа?',
+            message: 'Все демо-данные будут удалены, и вы начнёте с пустой CRM.',
+            confirmLabel: 'Удалить демо-данные',
           });
           if (!ok) return;
           try {
             await wipeSampleData(store);
           } catch (err) {
             console.error(err);
-            toast('Couldn’t wipe. Check your connection', { icon: 'wifiOff' });
+            toast('Не удалось удалить. Проверьте связь', { icon: 'wifiOff' });
             return;
           }
           openOnboarding();
         },
-      }, 'Start fresh')
+      }, 'Начать с нуля')
     ));
   }
   store.addEventListener('change', renderSampleBanner);
@@ -109,7 +109,7 @@ export function mountShell(appRoot) {
     const dueToday = open.filter((t) => t.due === today).length;
     const n = overdue || dueToday;
     if (!n) return null;
-    const label = overdue ? `${overdue} overdue` : `${dueToday} due today`;
+    const label = overdue ? `Просрочено: ${overdue}` : `На сегодня: ${dueToday}`;
     return el(`span.nav-badge${overdue ? '' : '.info'}`, {
       role: 'img', 'aria-label': label, title: label,
     }, n > 9 ? '9+' : String(n));
@@ -141,23 +141,23 @@ export function mountShell(appRoot) {
       el('span.row-chev', { html: icon('chevR', 18) })
     );
     const modal = openModal({
-      title: 'Add',
+      title: 'Создать',
       content: el('div.settings-list', {},
-        entry('deal', 'Deal', 'An opportunity to move through the pipeline', () => openDealForm()),
-        entry('userPlus', 'Lead', 'A person you might sell to', () => openContactForm()),
-        entry('video', 'Activity', 'Log a meeting, call, email, or note', () => openActivityForm()),
-        entry('followups', 'Follow-up', 'A dated reminder to reach out', () => openTaskForm())
+        entry('deal', 'Сделка', 'Возможность, которая пойдёт по воронке', () => openDealForm()),
+        entry('userPlus', 'Контакт', 'Человек, которому можно продать', () => openContactForm()),
+        entry('video', 'Запись в историю', 'Встреча, звонок, письмо или заметка', () => openActivityForm()),
+        entry('followups', 'Задача', 'Напоминание с датой, чтобы связаться', () => openTaskForm())
       ),
     });
   }
 
   /* Sidebar (desktop) */
-  const username = store.user?.username || 'User';
+  const username = store.user?.username || 'Пользователь';
   const sidebarNav = el('div', { style: { display: 'contents' } });
-  const sidebar = el('nav.sidebar', { 'aria-label': 'Main navigation' },
+  const sidebar = el('nav.sidebar', { 'aria-label': 'Основное меню' },
     el('div.brand', {},
       el('img.brand-mark', { src: './icon-192.png', alt: '', 'aria-hidden': 'true' }),
-      'Sales CRM'
+      'CRM для продаж'
     ),
     el('button.sidebar-search', {
       type: 'button',
@@ -165,7 +165,7 @@ export function mountShell(appRoot) {
       'aria-haspopup': 'dialog',
       onclick: openPalette,
     },
-      el('span.grow', {}, 'Search'),
+      el('span.grow', {}, 'Поиск'),
       el('kbd.kbd', { 'aria-hidden': 'true' }, shortcutHint())
     ),
     sidebarNav,
@@ -175,26 +175,26 @@ export function mountShell(appRoot) {
     el('button.btn.btn-primary.sidebar-add', {
       html: icon('plus', 17, 2.2),
       onclick: openQuickAdd,
-    }, ' New'),
+    }, ' Создать'),
     el('div.sidebar-user', {},
       el('span.avatar', {}, username.charAt(0).toUpperCase()),
       el('span.name', { title: username }, username),
       // Inside Puter's desktop the platform owns the session - no sign-out.
       puter.env !== 'app' && el('button.icon-btn', {
         html: icon('logout', 18, 2),
-        'aria-label': 'Sign out',
-        title: 'Sign out',
+        'aria-label': 'Выйти',
+        title: 'Выйти',
         onclick: confirmSignOut,
       })
     )
   );
 
   /* Tab bar (mobile) */
-  const tabbar = el('nav.tabbar', { 'aria-label': 'Main navigation' });
+  const tabbar = el('nav.tabbar', { 'aria-label': 'Основное меню' });
 
   function openMoreSheet() {
     const modal = openModal({
-      title: 'More',
+      title: 'Ещё',
       content: el('div.settings-list', {},
         el('button.settings-row', {
           type: 'button',
@@ -202,8 +202,8 @@ export function mountShell(appRoot) {
         },
           el('span.row-ic', { html: icon('search', 20, 1.8) }),
           el('div.grow', {},
-            el('div.title', {}, 'Search'),
-            el('div.sub', {}, 'Every lead, company, deal, and follow-up')
+            el('div.title', {}, 'Поиск'),
+            el('div.sub', {}, 'Контакты, компании, сделки и задачи')
           ),
           el('span.row-chev', { html: icon('chevR', 18) })
         ),
@@ -254,7 +254,7 @@ export function mountShell(appRoot) {
       html: icon('more', 23, 1.8),
       'aria-haspopup': 'dialog',
       onclick: openMoreSheet,
-    }, el('span', {}, 'More')));
+    }, el('span', {}, 'Ещё')));
   }
 
   /* ---------- scroll memory ----------
@@ -296,7 +296,7 @@ export function mountShell(appRoot) {
   function renderRoute({ resumeScroll = false } = {}) {
     const route = routeFor(location.hash);
     // Name the page in the tab and in history, not just the app.
-    document.title = route === ROUTES[0] ? 'Sales CRM' : `${route.label} · Sales CRM`;
+    document.title = route === ROUTES[0] ? 'CRM для продаж' : `${route.label} · CRM для продаж`;
     renderNav();
     currentView?.destroy?.();
     clear(viewWrap);
@@ -310,7 +310,7 @@ export function mountShell(appRoot) {
 
   const fab = el('button.fab', {
     html: icon('plus', 26, 2.2),
-    'aria-label': 'Add',
+    'aria-label': 'Создать',
     onclick: openQuickAdd,
   });
 

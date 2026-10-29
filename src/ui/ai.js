@@ -40,7 +40,7 @@ async function withPending(button, label, run) {
   }
 }
 
-const failed = () => toast('The model didn’t answer. Nothing was changed', { icon: 'alert' });
+const failed = () => toast('Модель не ответила. Ничего не изменено', { icon: 'alert' });
 
 /* ---------- 1. paste to create ---------- */
 
@@ -56,7 +56,7 @@ export function pasteToFillButton({ kind, fields, onFilled = null }) {
     html: icon('sparkle', 14, 2),
     'aria-haspopup': 'dialog',
     onclick: () => openPasteSheet({ kind, fields, onFilled }),
-  }, ' Paste details');
+  }, ' Вставить данные');
 }
 
 function openPasteSheet({ kind, fields, onFilled }) {
@@ -65,15 +65,15 @@ function openPasteSheet({ kind, fields, onFilled }) {
     rows: 7,
     id: 'ai-paste',
     placeholder: isCompany
-      ? 'Paste an About page, a footer, anything that names the company…'
-      : 'Paste an email signature, a LinkedIn blurb, your notes from the call…',
+      ? 'Вставьте текст со страницы «О компании», подвал сайта или любой текст с названием компании…'
+      : 'Вставьте подпись из письма, текст из профиля, заметки после звонка…',
   });
 
-  const fill = el('button.btn.btn-primary', { type: 'button' }, 'Fill the form');
-  fill.addEventListener('click', () => withPending(fill, 'Reading…', async () => {
+  const fill = el('button.btn.btn-primary', { type: 'button' }, 'Заполнить форму');
+  fill.addEventListener('click', () => withPending(fill, 'Читаю…', async () => {
     const source = text.value.trim();
     if (!source) {
-      toast('Paste something first', { icon: 'alert' });
+      toast('Сначала вставьте текст', { icon: 'alert' });
       return;
     }
     let draft;
@@ -86,7 +86,7 @@ function openPasteSheet({ kind, fields, onFilled }) {
     }
     const keys = Object.keys(draft);
     if (!keys.length) {
-      toast('Couldn’t find any details in that', { icon: 'alert' });
+      toast('В этом тексте не нашлось данных', { icon: 'alert' });
       return;
     }
     // Only empty fields are filled: an extraction is a suggestion, and it
@@ -111,20 +111,20 @@ function openPasteSheet({ kind, fields, onFilled }) {
   }));
 
   const modal = openModal({
-    title: 'Paste details',
+    title: 'Вставить данные',
     focusFirst: true,
     content: el('div', {},
       el('p.settings-note.sheet-note', {},
-        'What you paste is sent to your Puter AI to be read back as fields. Nothing is saved until you save the form.'),
+        'Вставленный текст отправляется в ИИ Puter, который разберёт его по полям. Ничего не сохранится, пока вы не сохраните форму.'),
       el('div.settings-body', {},
         el('div.field', {},
-          el('label.field-label', { for: 'ai-paste' }, 'Text to read'),
+          el('label.field-label', { for: 'ai-paste' }, 'Текст'),
           text
         )
       ),
       el('div.form-actions', {},
         el('div.grow'),
-        el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Cancel'),
+        el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Отмена'),
         fill
       )
     ),
@@ -132,15 +132,21 @@ function openPasteSheet({ kind, fields, onFilled }) {
   return modal;
 }
 
-/** "Name, title, and email filled" - what a paste actually did. */
+/** Field names as a paste summary reads them. */
+const FILL_LABELS = {
+  name: 'имя', title: 'должность', email: 'почта', phone: 'телефон',
+  company: 'компания', industry: 'отрасль', website: 'сайт',
+};
+
+/** "Заполнено: имя, должность и почта" - what a paste actually did. */
 export function fillSummary({ filled, skipped }) {
-  const label = (k) => (k === 'name' ? 'name' : k === 'title' ? 'job title' : k);
-  if (!filled.length) return 'Nothing new to fill - those fields already have values';
+  const label = (k) => FILL_LABELS[k] || k;
+  if (!filled.length) return 'Заполнять нечего: в этих полях уже есть значения';
   const names = filled.map(label);
   const list = names.length === 1 ? names[0]
-    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-  const left = skipped.length ? ` · ${skipped.length} left alone` : '';
-  return `${list.charAt(0).toUpperCase()}${list.slice(1)} filled${left}`;
+    : `${names.slice(0, -1).join(', ')} и ${names[names.length - 1]}`;
+  const left = skipped.length ? ` · не тронуто: ${skipped.length}` : '';
+  return `Заполнено: ${list}${left}`;
 }
 
 /* ---------- 2. draft this email ---------- */
@@ -155,8 +161,8 @@ export function draftEmailButton({ contact, deal, subject, body }) {
   const button = el('button.btn.btn-ghost.btn-sm.btn-dashed.ai-btn', {
     type: 'button',
     html: icon('sparkle', 14, 2),
-  }, ' Draft it for me');
-  button.addEventListener('click', () => withPending(button, 'Writing…', async () => {
+  }, ' Написать черновик');
+  button.addEventListener('click', () => withPending(button, 'Пишу…', async () => {
     const { emailPrompt } = await import('../lib/ai.js');
     const context = contextFor({ contact, deal });
     let text;
@@ -172,7 +178,7 @@ export function draftEmailButton({ contact, deal, subject, body }) {
     }
     body.value = text;
     body.focus();
-    toast('Draft written - edit it before you send', { icon: 'sparkle' });
+    toast('Черновик готов. Проверьте его перед отправкой', { icon: 'sparkle' });
   }));
   return button;
 }
@@ -217,8 +223,8 @@ export function catchUpButton({ contact = null, deal = null }) {
     type: 'button',
     html: icon('sparkle', 14, 2),
     'aria-haspopup': 'dialog',
-  }, ' Catch me up');
-  button.addEventListener('click', () => withPending(button, 'Reading…', async () => {
+  }, ' Краткая сводка');
+  button.addEventListener('click', () => withPending(button, 'Читаю…', async () => {
     let text;
     try {
       text = await askAI(summaryPrompt(contextFor({ contact, deal })));
@@ -234,19 +240,19 @@ export function catchUpButton({ contact = null, deal = null }) {
 function openSummary(text, who) {
   const area = el('textarea.input.textarea.ai-summary', { rows: 8, value: text, id: 'ai-summary' });
   const modal = openModal({
-    title: who ? `Where ${who} stands` : 'Catch me up',
+    title: who ? `Сводка: ${who}` : 'Краткая сводка',
     content: el('div', {},
       el('div.settings-body', {},
         el('div.field', {},
-          el('label.field-label.sr-only', { for: 'ai-summary' }, 'Summary'),
+          el('label.field-label.sr-only', { for: 'ai-summary' }, 'Сводка'),
           area,
           el('p.field-hint', {},
-            'Written by your Puter AI from this record’s own history. Nothing is saved - copy what is useful.')
+            'Составлено ИИ Puter по истории этой карточки. Ничего не сохраняется — скопируйте нужное.')
         )
       ),
       el('div.form-actions', {},
         el('div.grow'),
-        el('button.btn.btn-primary', { type: 'button', onclick: () => modal.close() }, 'Done')
+        el('button.btn.btn-primary', { type: 'button', onclick: () => modal.close() }, 'Готово')
       )
     ),
   });

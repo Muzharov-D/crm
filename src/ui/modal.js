@@ -45,7 +45,7 @@ export function openModal({
     el('div.sheet-handle'),
     head || el('div.modal-head', {},
       el('h2.modal-title', {}, title),
-      el('button.icon-btn', { html: icon('x', 20), 'aria-label': 'Close', onclick: () => requestClose() })
+      el('button.icon-btn', { html: icon('x', 20), 'aria-label': 'Закрыть', onclick: () => requestClose() })
     ),
     content
   );
@@ -127,9 +127,9 @@ export function openModal({
     }
     asking = true;
     const discard = await confirmDialog({
-      title: 'Discard your changes?',
-      message: 'This form has changes that haven’t been saved. Closing it now loses them.',
-      confirmLabel: 'Discard',
+      title: 'Закрыть без сохранения?',
+      message: 'В форме есть несохранённые изменения. Если закрыть её сейчас, они пропадут.',
+      confirmLabel: 'Не сохранять',
     });
     asking = false;
     if (discard) close();
@@ -198,7 +198,7 @@ export function closeAllModals() {
  * only have news to deliver - a refusal has nothing to cancel.
  */
 export function confirmDialog({
-  title, message, confirmLabel = 'Delete', danger = true, cancelLabel = 'Cancel',
+  title, message, confirmLabel = 'Удалить', danger = true, cancelLabel = 'Отмена',
 }) {
   return new Promise((resolve) => {
     const content = el('div', {},

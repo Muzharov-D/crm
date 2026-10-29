@@ -9,7 +9,7 @@
  * label a rule without importing the data layer it feeds.
  */
 
-import { addDays, addMonthsClamped } from './util.js';
+import { addDays, addMonthsClamped, plural } from './util.js';
 
 export const REPEAT_UNITS = ['day', 'week', 'month'];
 
@@ -38,9 +38,22 @@ export function nextRepeatDue(fromISO, repeat) {
   return addMonthsClamped(fromISO, rule.every);
 }
 
-/** "Every day" / "Every 2 weeks" / "Every 3 months", or '' for no rule. */
+/* Each unit as "каждый/каждую" + its three plural forms (accusative). */
+const UNIT_WORDS = {
+  day: { each: 'Каждый', forms: ['день', 'дня', 'дней'] },
+  week: { each: 'Каждую', forms: ['неделю', 'недели', 'недель'] },
+  month: { each: 'Каждый', forms: ['месяц', 'месяца', 'месяцев'] },
+};
+
+/**
+ * "Каждый день" / "Каждые 2 недели" / "Каждые 3 месяца", or '' for no rule.
+ * A count ending in 1 takes the singular: "Каждый 21 день".
+ */
 export function repeatLabel(repeat) {
   const rule = normalizeRepeat(repeat);
   if (!rule) return '';
-  return rule.every === 1 ? `Every ${rule.unit}` : `Every ${rule.every} ${rule.unit}s`;
+  const { each, forms } = UNIT_WORDS[rule.unit];
+  if (rule.every === 1) return `${each} ${forms[0]}`;
+  const word = plural(rule.every, forms);
+  return `${word === forms[0] ? each : 'Каждые'} ${rule.every} ${word}`;
 }

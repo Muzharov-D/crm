@@ -27,15 +27,15 @@ import { todayISO } from '../lib/util.js';
 export function openTemplateForm(template = null, { onSaved = null } = {}) {
   const name = el('input.input', {
     type: 'text', value: template?.name || '', required: true, maxlength: 80,
-    id: 'tpl-name', placeholder: 'e.g. Proposal follow-up', autocomplete: 'off',
+    id: 'tpl-name', placeholder: 'Например, после отправки КП', autocomplete: 'off',
   });
   const subject = el('input.input', {
     type: 'text', value: template?.subject || '', maxlength: 200,
-    id: 'tpl-subject', placeholder: 'e.g. Next steps for {{company}}', autocomplete: 'off',
+    id: 'tpl-subject', placeholder: 'Например, дальнейшие шаги для {{company}}', autocomplete: 'off',
   });
   const body = el('textarea.input.textarea', {
     rows: 8, value: template?.body || '', id: 'tpl-body',
-    placeholder: 'Hi {{firstName}},\n\n…',
+    placeholder: 'Здравствуйте, {{firstName}}!\n\n…',
   });
 
   /* Merge-field chips insert at the caret of whichever text field was
@@ -47,7 +47,7 @@ export function openTemplateForm(template = null, { onSaved = null } = {}) {
   const chips = el('div.chip-row.tpl-chips', {}, MERGE_FIELDS.map((f) =>
     el('button.filter-chip', {
       type: 'button',
-      title: `Insert ${f.token}`,
+      title: `Вставить ${f.token}`,
       onclick: () => {
         const at = target.selectionStart ?? target.value.length;
         target.setRangeText(f.token, at, target.selectionEnd ?? at, 'end');
@@ -57,21 +57,21 @@ export function openTemplateForm(template = null, { onSaved = null } = {}) {
 
   const form = el('form.form', {},
     el('div.field', {},
-      el('label.field-label', { for: 'tpl-name' }, 'Template name', requiredMark()), name),
-    el('div.field', {}, el('label.field-label', { for: 'tpl-subject' }, 'Subject'), subject),
+      el('label.field-label', { for: 'tpl-name' }, 'Название шаблона', requiredMark()), name),
+    el('div.field', {}, el('label.field-label', { for: 'tpl-subject' }, 'Тема'), subject),
     el('div.field', {},
-      el('label.field-label', { for: 'tpl-body' }, 'Body'),
+      el('label.field-label', { for: 'tpl-body' }, 'Текст'),
       body,
-      el('p.field-hint', {}, 'Click to insert a merge field. It fills from the lead or deal when you use the template:'),
+      el('p.field-hint', {}, 'Нажмите, чтобы вставить поле. При отправке оно заполнится из контакта или сделки:'),
       chips
     ),
     el('div.form-actions', {},
       el('div.grow'),
-      el('button.btn.btn-primary', { type: 'submit' }, template ? 'Save changes' : 'Add template')
+      el('button.btn.btn-primary', { type: 'submit' }, template ? 'Сохранить' : 'Добавить шаблон')
     )
   );
 
-  const modal = openModal({ title: template ? 'Edit template' : 'New email template', content: form, guardUnsaved: true });
+  const modal = openModal({ title: template ? 'Шаблон письма' : 'Новый шаблон письма', content: form, guardUnsaved: true });
 
   // The same wiring every other form in the app uses, for the same reason:
   // it disables the submit button before awaiting the save, so a second
@@ -82,7 +82,7 @@ export function openTemplateForm(template = null, { onSaved = null } = {}) {
       ? await store.updateTemplate(template.id, data)
       : await store.addTemplate(data);
     modal.close();
-    toast(template ? 'Template updated' : 'Template added');
+    toast(template ? 'Шаблон сохранён' : 'Шаблон добавлен');
     onSaved?.(saved);
   });
   return modal;
@@ -96,19 +96,19 @@ async function logEmail({ subject, contact, deal }) {
     await store.addActivity({
       type: 'email',
       date: todayISO(),
-      summary: subject.trim() || `Email to ${contact.name}`,
+      summary: subject.trim() || `Письмо: ${contact.name}`,
       contactId: contact.id,
       dealId: deal?.id || null,
       companyId: contact.companyId || deal?.companyId || null,
     });
   } catch {
-    toast('Couldn’t log it. Check your connection', { icon: 'wifiOff' });
+    toast('Не удалось записать. Проверьте подключение', { icon: 'wifiOff' });
     return;
   }
   const nudged = maybeNudgeNextStep({
-    contactId: contact.id, dealId: deal?.id || null, lead: 'Email logged',
+    contactId: contact.id, dealId: deal?.id || null, lead: 'Письмо записано',
   });
-  if (!nudged) toast('Email logged', { icon: 'mail' });
+  if (!nudged) toast('Письмо записано в историю', { icon: 'mail' });
 }
 
 /** Compose: filled subject/body, editable, then off to the mail client. */
@@ -126,12 +126,12 @@ function openCompose({ template, contact, deal }) {
 
   const form = el('form.form', {},
     el('div.compose-to', {},
-      el('span.field-label', {}, 'To'),
+      el('span.field-label', {}, 'Кому'),
       el('span.compose-addr', {}, contact.email)
     ),
-    el('div.field', {}, el('label.field-label', { for: 'compose-subject' }, 'Subject'), subject),
+    el('div.field', {}, el('label.field-label', { for: 'compose-subject' }, 'Тема'), subject),
     el('div.field', {},
-      el('label.field-label', { for: 'compose-body' }, 'Body'),
+      el('label.field-label', { for: 'compose-body' }, 'Текст'),
       body,
       // A first pass from what the record says, into this same field - the
       // founder edits it and still sends from their own mail client.
@@ -140,13 +140,13 @@ function openCompose({ template, contact, deal }) {
     el('div.form-actions', {},
       // Through the unsaved-work guard, like Escape and the scrim: Cancel
       // is a dismissing gesture, not a decision to discard the draft.
-      el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.requestClose() }, 'Cancel'),
+      el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.requestClose() }, 'Отмена'),
       el('div.grow'),
-      el('button.btn.btn-primary', { type: 'submit', html: icon('mail', 15, 2) }, ' Open in mail app')
+      el('button.btn.btn-primary', { type: 'submit', html: icon('mail', 15, 2) }, ' Открыть в почте')
     )
   );
 
-  const modal = openModal({ title: `Email ${contact.name}`, content: form, wide: true, guardUnsaved: true });
+  const modal = openModal({ title: `Письмо: ${contact.name}`, content: form, wide: true, guardUnsaved: true });
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -154,11 +154,11 @@ function openCompose({ template, contact, deal }) {
     location.href = buildMailto(contact.email, subjectText, body.value);
     modal.close();
     // The draft is in their mail client now; one click books the record.
-    toast('Draft opened in your mail app', {
+    toast('Черновик открыт в почтовой программе', {
       icon: 'mail',
       duration: 10000,
       action: {
-        label: 'Log it',
+        label: 'Записать',
         onClick: () => logEmail({ subject: subjectText, contact, deal }),
       },
     });
@@ -178,14 +178,14 @@ export function openEmailFlow({ contact, deal = null, template = undefined }) {
   if (!contact?.email) return null;
   if (template !== undefined) return openCompose({ template, contact, deal });
 
-  const templates = [...store.templates].sort((a, b) => a.name.localeCompare(b.name));
+  const templates = [...store.templates].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   const pick = (template) => {
     modal.close();
     setTimeout(() => openCompose({ template, contact, deal }), 120);
   };
 
   const modal = openModal({
-    title: `Email ${contact.name}`,
+    title: `Письмо: ${contact.name}`,
     content: el('div', {},
       templates.length
         ? el('div.settings-list', {}, templates.map((t) => el('button.settings-row', {
@@ -205,13 +205,13 @@ export function openEmailFlow({ contact, deal = null, template = undefined }) {
             el('span.row-chev', { html: icon('chevR', 18) })
           )))
         : el('p.settings-note.sheet-note', {},
-            'No templates yet. The ones you create in Settings appear here with their merge fields filled from this record.'),
+            'Шаблонов пока нет. Шаблоны из настроек появятся здесь, а поля в них заполнятся из этой карточки.'),
       el('div.settings-body', {},
         el('button.btn.btn-ghost.btn-sm.btn-dashed', {
           type: 'button',
           html: icon('pencil', 14, 2),
           onclick: () => pick(null),
-        }, ' Blank email')
+        }, ' Пустое письмо')
       )
     ),
   });

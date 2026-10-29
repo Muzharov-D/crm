@@ -1,7 +1,9 @@
 import { el, clear, append, keepingFocus } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { store } from '../lib/store.js';
-import { fuzzyIncludes, timeAgo, formatDate, todayISO } from '../lib/util.js';
+import {
+  fuzzyIncludes, timeAgo, formatDate, todayISO, countLabel, plural,
+} from '../lib/util.js';
 import {
   pageHead, emptyState, avatar, searchBox, stageBadge,
   activityRow, moneyText, section, deletedToast,
@@ -44,7 +46,7 @@ function companiesList(params) {
   let fieldFilters = {};
 
   const search = searchBox({
-    placeholder: 'Search companies…',
+    placeholder: 'Поиск по компаниям…',
     oninput: (e) => { query = e.target.value.trim(); renderList(); },
   });
 
@@ -88,35 +90,35 @@ function companiesList(params) {
 
   function bulkActions() {
     const ids = () => selection.ids();
-    const fail = () => toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+    const fail = () => toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' });
     return [
       {
-        icon: 'tag', label: 'Tag',
+        icon: 'tag', label: 'Метка',
         onClick: () => openBulkTagSheet(async (tag) => {
           try {
             const n = await store.bulkTag('companies', ids(), tag);
             selection.clear();
-            bulkToast(n, `Tagged “${tag}”`, 'tag');
+            bulkToast(n, `Метка «${tag}» добавлена`, 'tag');
           } catch { fail(); }
         }),
       },
       {
-        icon: 'fileDown', label: 'Export',
+        icon: 'fileDown', label: 'Экспорт',
         onClick: () => {
           const records = store.companies.filter((c) => selection.has(c.id));
           downloadFile(`crm-companies-selection-${todayISO()}.csv`,
             `﻿${exportRecords('companies', records, exportContext())}`, 'text/csv');
-          toast(`${records.length} compan${records.length === 1 ? 'y' : 'ies'} exported`, { icon: 'fileDown' });
+          toast(`${countLabel(records.length, ['компания', 'компании', 'компаний'])} ${plural(records.length, ['экспортирована', 'экспортированы', 'экспортировано'])}`, { icon: 'fileDown' });
         },
       },
       {
-        icon: 'trash', label: 'Delete', danger: true,
+        icon: 'trash', label: 'Удалить', danger: true,
         onClick: async () => {
-          if (!await confirmBulkDelete(selection.size, selection.size === 1 ? 'company' : 'companies')) return;
+          if (!await confirmBulkDelete(selection.size, plural(selection.size, ['компанию', 'компании', 'компаний']))) return;
           try {
             const entries = await store.bulkDelete('companies', ids());
             selection.clear();
-            toast(`${entries.length} compan${entries.length === 1 ? 'y' : 'ies'} deleted`, { icon: 'trash' });
+            toast(`${countLabel(entries.length, ['компания', 'компании', 'компаний'])} ${plural(entries.length, ['удалена', 'удалены', 'удалено'])}`, { icon: 'trash' });
           } catch { fail(); }
         },
       },
@@ -155,9 +157,9 @@ function companiesList(params) {
     if (!store.companies.length) {
       listWrap.append(emptyState({
         icon: 'company',
-        title: 'No companies yet',
-        message: 'Companies group your leads and deals by account, so you see everything happening with one customer in one place.',
-        action: el('button.btn.btn-primary', { onclick: () => openCompanyForm() }, 'Add your first company'),
+        title: 'Компаний пока нет',
+        message: 'Компании объединяют контакты и сделки по клиенту: всё, что происходит с одним клиентом, видно в одном месте.',
+        action: el('button.btn.btn-primary', { onclick: () => openCompanyForm() }, 'Добавить первую компанию'),
       }));
       return;
     }
@@ -180,16 +182,16 @@ function companiesList(params) {
       // the wrong place. Name both, and offer the way out.
       listWrap.append(emptyState({
         icon: 'search',
-        title: 'No matches',
+        title: 'Ничего не найдено',
         message: activeFields.length
-          ? `No company matches ${activeFields.map((f) => fieldFilterLabel(f.field, f.value)).join(' and ')}${query || tagsFilter.length ? ' alongside the other filters' : ''}.`
+          ? `Ни одна компания не подходит под условие ${activeFields.map((f) => `«${fieldFilterLabel(f.field, f.value)}»`).join(' и ')}${query || tagsFilter.length ? ' вместе с остальными фильтрами' : ''}.`
           : tagsFilter.length && query
-            ? 'Nothing matches that search inside the tags you picked.'
+            ? 'Среди компаний с выбранными метками по этому запросу ничего нет.'
             : tagsFilter.length
-              ? 'No company wears every tag you picked.'
-              : 'Try a different search.',
+              ? 'Нет компании со всеми выбранными метками.'
+              : 'Попробуйте изменить запрос.',
         action: (query || tagsFilter.length || activeFields.length)
-          && el('button.btn.btn-ghost', { onclick: clearFilters }, 'Clear filters'),
+          && el('button.btn.btn-ghost', { onclick: clearFilters }, 'Сбросить фильтры'),
       }));
       return;
     }
@@ -206,8 +208,8 @@ function companiesList(params) {
             el('div.person-name', {}, c.name),
             el('div.person-sub', {}, [
               c.industry,
-              people ? `${people} ${people === 1 ? 'person' : 'people'}` : null,
-            ].filter(Boolean).join(' · ') || 'No details yet')
+              people ? countLabel(people, ['контакт', 'контакта', 'контактов']) : null,
+            ].filter(Boolean).join(' · ') || 'Данных пока нет')
           ),
           open > 0 && el('span.deal-row-value', {}, moneyText(open)),
           el('span.row-chev', { html: icon('chevR', 18) })
@@ -243,11 +245,11 @@ function companiesList(params) {
   store.addEventListener('change', rerenderOnChange);
 
   root.append(
-    pageHead('Companies',
+    pageHead('Компании',
       el('button.btn.btn-primary', {
         html: icon('plus', 16, 2.2),
         onclick: () => openCompanyForm(),
-      }, ' New company')),
+      }, ' Новая компания')),
     controls,
     listWrap,
     bulkWrap
@@ -267,9 +269,9 @@ function companyDetail(id) {
     const company = store.companyById(id);
     if (!company) {
       body.append(emptyState({
-        icon: 'company', title: 'Company not found',
-        message: 'It may have been deleted.',
-        action: el('a.btn.btn-ghost', { href: '#/companies' }, 'Back to companies'),
+        icon: 'company', title: 'Компания не найдена',
+        message: 'Возможно, её удалили.',
+        action: el('a.btn.btn-ghost', { href: '#/companies' }, 'Вернуться к компаниям'),
       }));
       return;
     }
@@ -281,7 +283,7 @@ function companyDetail(id) {
 
     const meta = [
       company.industry,
-      company.size && `${company.size} people`,
+      company.size && `${company.size} чел.`,
     ].filter(Boolean).join(' · ');
 
     append(body, [
@@ -289,7 +291,7 @@ function companyDetail(id) {
         el('span.avatar.lg.square', { 'aria-hidden': 'true', html: icon('building', 24, 1.6) }),
         el('div.grow.min0', {},
           el('h1.detail-title', {}, company.name),
-          el('p.detail-sub', {}, meta || 'No details yet'),
+          el('p.detail-sub', {}, meta || 'Данных пока нет'),
           el('div.chip-row', {},
             company.website && el('a.chip', {
               href: /^https?:/i.test(company.website) ? company.website : `https://${company.website}`,
@@ -298,7 +300,7 @@ function companyDetail(id) {
               el('span', { html: icon('globe', 13, 2) }),
               el('span.chip-label', {}, company.website)),
             openValue > 0 && el('span.chip.static', {},
-              el('span', { html: icon('money', 13, 2) }), `${moneyText(openValue)} open`),
+              el('span', { html: icon('money', 13, 2) }), `${moneyText(openValue)} в работе`),
             (company.tags || []).map((t) => el('span.chip.static', {},
               el('span', { html: icon('tag', 13, 2) }), t))
           )
@@ -307,13 +309,13 @@ function companyDetail(id) {
           el('button.btn.btn-ghost.btn-sm', {
             html: icon('pencil', 15, 2),
             onclick: () => openCompanyForm(company),
-          }, ' Edit'),
+          }, ' Изменить'),
           el('button.icon-btn', {
-            html: icon('trash', 17, 2), 'aria-label': `Delete ${company.name}`,
+            html: icon('trash', 17, 2), 'aria-label': `Удалить «${company.name}»`,
             onclick: async () => {
               const ok = await confirmDialog({
-                title: 'Delete this company?',
-                message: 'People, deals, and history stay, but lose their link to this company. It goes to Recently deleted in Settings for 30 days.',
+                title: 'Удалить компанию?',
+                message: 'Контакты, сделки и история останутся, но потеряют связь с компанией. Сама компания 30 дней пролежит в корзине в настройках.',
               });
               if (!ok) return;
               // Leave first - see the note on the deal delete: waiting out
@@ -321,9 +323,9 @@ function companyDetail(id) {
               location.hash = '#/companies';
               try {
                 const entry = await store.deleteCompany(id);
-                deletedToast('Company deleted', entry);
+                deletedToast('Компания удалена', entry);
               } catch {
-                toast('Couldn’t delete. Check your connection', { icon: 'wifiOff' });
+                toast('Не удалось удалить. Проверьте подключение', { icon: 'wifiOff' });
               }
             },
           })
@@ -332,18 +334,18 @@ function companyDetail(id) {
 
       (() => {
         const rows = customFieldRows('companies', company);
-        return rows && section('Details', null, el('div.settings-body', {}, rows));
+        return rows && section('Дополнительно', null, el('div.settings-body', {}, rows));
       })(),
 
       company.notes && el('section.card', {},
         el('div.settings-body', {}, el('p.detail-notes', {}, company.notes))
       ),
 
-      section('People',
+      section('Контакты',
         el('button.btn.btn-ghost.btn-sm', {
           html: icon('userPlus', 14, 2),
           onclick: () => openContactForm(null, { presets: { companyId: id } }),
-        }, ' Add'),
+        }, ' Добавить'),
         people.length
           ? el('div.deal-list', {}, people.map((p) => el('a.person-row.inset', { href: `#/leads?id=${p.id}` },
               avatar(p.name),
@@ -353,36 +355,36 @@ function companyDetail(id) {
               ),
               el('span.row-chev', { html: icon('chevR', 18) })
             )))
-          : el('p.card-empty', {}, 'No people at this company yet.')
+          : el('p.card-empty', {}, 'В этой компании пока нет контактов.')
       ),
 
-      section('Deals',
+      section('Сделки',
         el('button.btn.btn-ghost.btn-sm', {
           html: icon('plus', 14, 2.2),
           onclick: () => openDealForm(null, { presets: { companyId: id } }),
-        }, ' Add'),
+        }, ' Добавить'),
         deals.length
           ? el('div.deal-list', {}, deals.map((d) => el('a.deal-row', { href: `#/pipeline?id=${d.id}` },
               el('div.grow.min0', {},
                 el('div.deal-row-name', {}, d.name),
                 el('div.person-sub', {}, d.expectedClose && isOpen(d)
-                  ? `Expected ${formatDate(d.expectedClose)}` : `Updated ${timeAgo(d.updatedAt)}`)
+                  ? `Закрытие ${formatDate(d.expectedClose)}` : `Обновлена ${timeAgo(d.updatedAt)}`)
               ),
               el('span.deal-row-value', {}, rateText(d, store.settings.currency)),
               stageBadge(d.stage)
             )))
-          : el('p.card-empty', {}, 'No deals with this company yet.')
+          : el('p.card-empty', {}, 'Сделок с этой компанией пока нет.')
       ),
 
-      section('History',
+      section('История',
         el('button.btn.btn-ghost.btn-sm', {
           html: icon('plus', 14, 2.2),
           onclick: () => openActivityForm(null, { presets: { companyId: id } }),
-        }, ' Log'),
+        }, ' Записать'),
         history.length
           ? el('div.activity-list', {}, history.map((a) =>
               activityRow(a, { context: { companyId: id }, onEdit: (act) => openActivityForm(act) })))
-          : el('p.card-empty', {}, 'Meetings, calls, emails, and notes involving this company show up here.')
+          : el('p.card-empty', {}, 'Здесь появятся встречи, звонки, письма и заметки по этой компании.')
       ),
 
       attachmentsSection({ companyId: id }),
@@ -394,7 +396,7 @@ function companyDetail(id) {
   render();
 
   root.append(
-    el('a.back-link', { href: '#/companies', html: icon('chevL', 16, 2.2) }, 'Companies'),
+    el('a.back-link', { href: '#/companies', html: icon('chevL', 16, 2.2) }, 'Компании'),
     body
   );
   root.destroy = () => store.removeEventListener('change', renderOnChange);

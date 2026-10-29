@@ -17,7 +17,7 @@
  * functions: no Puter, no DOM.
  */
 
-import { uid, addDays, todayISO } from './util.js';
+import { uid, addDays, todayISO, countLabel } from './util.js';
 
 /** Enough for the cadences a founder actually runs, few enough to scan. */
 export const MAX_PLAYBOOKS = 8;
@@ -117,24 +117,24 @@ export function playbookTasks(playbook, from = todayISO()) {
   }));
 }
 
-/** "Today" / "in 3 days" - how a step's offset reads in a preview. */
+/** "в день применения" / "через 3 дня" - how a step's offset reads in a preview. */
 export function offsetLabel(offset) {
   const n = offsetOf(offset);
-  if (n === 0) return 'the day it is applied';
-  if (n === 1) return 'the next day';
-  if (n % 7 === 0) return `${n / 7} week${n === 7 ? '' : 's'} later`;
-  return `${n} days later`;
+  if (n === 0) return 'в день применения';
+  if (n === 1) return 'на следующий день';
+  if (n % 7 === 0) return `через ${countLabel(n / 7, ['неделю', 'недели', 'недель'])}`;
+  return `через ${countLabel(n, ['день', 'дня', 'дней'])}`;
 }
 
-/** "4 steps over 3 weeks" - a playbook in one line. */
+/** "4 шага · за 3 недели" - a playbook in one line. */
 export function playbookSummary(playbook) {
   const steps = normalizePlaybookSteps(playbook?.steps);
-  if (!steps.length) return 'No steps yet';
+  if (!steps.length) return 'Шагов пока нет';
   const span = steps[steps.length - 1].offset;
-  const over = span === 0 ? 'all on the same day'
-    : span % 7 === 0 ? `over ${span / 7} week${span === 7 ? '' : 's'}`
-      : `over ${span} days`;
-  return `${steps.length} step${steps.length === 1 ? '' : 's'} · ${over}`;
+  const over = span === 0 ? 'в тот же день'
+    : span % 7 === 0 ? `за ${countLabel(span / 7, ['неделю', 'недели', 'недель'])}`
+      : `за ${countLabel(span, ['день', 'дня', 'дней'])}`;
+  return `${countLabel(steps.length, ['шаг', 'шага', 'шагов'])} · ${over}`;
 }
 
 /** A fresh playbook for the Settings editor. */

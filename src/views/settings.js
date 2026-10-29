@@ -29,13 +29,15 @@ import { formatBytes } from '../lib/files.js';
 import { applyTheme } from '../ui/theme.js';
 import { pageHead, section, stageBadge, stageRampStyle } from '../ui/bits.js';
 import { sampleDataset } from '../lib/sample.js';
-import { todayISO, clamp, formatMoney, timeAgo, formatDate } from '../lib/util.js';
+import {
+  todayISO, clamp, formatMoney, timeAgo, formatDate, plural, countLabel,
+} from '../lib/util.js';
 
 export async function confirmSignOut() {
   const ok = await confirmDialog({
-    title: 'Sign out?',
-    message: 'Your data stays safe on your server and will be here when you sign back in.',
-    confirmLabel: 'Sign out',
+    title: 'Выйти?',
+    message: 'Данные останутся на сервере и будут на месте, когда вы снова войдёте.',
+    confirmLabel: 'Выйти',
     danger: false,
   });
   if (!ok) return;
@@ -48,18 +50,42 @@ export async function confirmSignOut() {
 }
 
 const THEMES = [
-  { value: 'light', label: 'Light', icon: 'sun' },
-  { value: 'system', label: 'System', icon: 'monitor' },
-  { value: 'dark', label: 'Dark', icon: 'moon' },
+  { value: 'light', label: 'Светлая', icon: 'sun' },
+  { value: 'dark', label: 'Тёмная', icon: 'moon' },
+  { value: 'system', label: 'Как в системе', icon: 'monitor' },
 ];
 
-const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'INR', 'JPY', 'BRL', 'CHF', 'SEK'];
+const CURRENCIES = ['RUB', 'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'INR', 'JPY', 'BRL', 'CHF', 'SEK'];
+
+/* Russian count forms (1 / 2-4 / 5+) for the record kinds custom fields
+   attach to, and the genitive plural for "no fields on ... yet". */
+const KIND_FORMS = {
+  contacts: ['контакт', 'контакта', 'контактов'],
+  companies: ['компания', 'компании', 'компаний'],
+  deals: ['сделка', 'сделки', 'сделок'],
+};
+const KIND_GENITIVE = { contacts: 'контактов', companies: 'компаний', deals: 'сделок' };
+const RECORD_FORMS = ['запись', 'записи', 'записей'];
+
+/* What a value has to read as for a field type ("прочитать как число"). */
+const TYPE_AS = {
+  text: 'текст', number: 'число', date: 'дату', select: 'вариант из списка', checkbox: '«да» или «нет»',
+};
+
+/* Activity types in the plural and in count forms. */
+const ACTIVITY_PLURAL = { meeting: 'Встречи', call: 'Звонки', email: 'Письма', note: 'Заметки' };
+const ACTIVITY_FORMS = {
+  meeting: ['встреча', 'встречи', 'встреч'],
+  call: ['звонок', 'звонка', 'звонков'],
+  email: ['письмо', 'письма', 'писем'],
+  note: ['заметка', 'заметки', 'заметок'],
+};
 
 export function settingsView() {
   const root = el('div.view');
 
   /* ----- appearance ----- */
-  const themeGroup = el('div.seg-group', { role: 'group', 'aria-label': 'Theme' });
+  const themeGroup = el('div.seg-group', { role: 'group', 'aria-label': 'Тема' });
   function renderThemes() {
     clear(themeGroup);
     const current = store.settings.theme || 'light';
@@ -72,7 +98,7 @@ export function settingsView() {
         onclick: (e) => {
           applyTheme(t.value);
           store.updateSettings({ theme: t.value })
-            .catch(() => toast('Couldn’t save. Check your connection', { icon: 'wifiOff' }));
+            .catch(() => toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' }));
           // Move the highlight in place instead of rebuilding the group -
           // a rebuild drops keyboard focus on the floor mid-interaction.
           for (const b of e.currentTarget.parentElement.children) {
@@ -87,7 +113,7 @@ export function settingsView() {
   renderThemes();
 
   const currencySelect = el('select.select', {
-    'aria-label': 'Currency',
+    'aria-label': 'Валюта',
     onchange: async (e) => {
       const saved = store.updateSettings({ currency: e.target.value });
       // The goal field spells the currency out beside the number; it has to
@@ -96,10 +122,10 @@ export function settingsView() {
       try {
         await saved;
       } catch {
-        toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+        toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' });
         return;
       }
-      toast('Currency updated');
+      toast('Валюта изменена');
     },
   }, CURRENCIES.map((c) => el('option', { value: c, selected: c === store.settings.currency }, c)));
 
@@ -130,7 +156,7 @@ export function settingsView() {
       if (message) toast(typeof message === 'function' ? message(moved) : message);
     } catch {
       renderStageRows(focus);
-      toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+      toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' });
     }
   }
 
@@ -139,10 +165,10 @@ export function settingsView() {
     return new Promise((resolve) => {
       let picked = null;
       const modal = openModal({
-        title: `Remove ${stage.label}?`,
+        title: `Удалить этап «${stage.label}»?`,
         content: el('div', {},
           el('p.confirm-message', {},
-            `${count} deal${count === 1 ? '' : 's'} sit${count === 1 ? 's' : ''} in this stage. Choose the stage to move ${count === 1 ? 'it' : 'them'} to.`),
+            `На этом этапе ${countLabel(count, ['сделка', 'сделки', 'сделок'])}. Выберите этап, куда ${count === 1 ? 'её' : 'их'} перенести.`),
           el('div.settings-list', {}, targets.map((t) => el('button.settings-row', {
             type: 'button',
             onclick: () => { picked = t.id; modal.close(); },
@@ -168,7 +194,7 @@ export function settingsView() {
 
       const name = el('input.input.stage-name-input', {
         type: 'text', value: s.label, maxlength: 40, autocomplete: 'off',
-        'aria-label': `Stage ${i + 1} name`,
+        'aria-label': `Название этапа ${i + 1}`,
         onchange: () => {
           const label = name.value.trim();
           if (!label || label === s.label) { name.value = s.label; return; }
@@ -187,20 +213,20 @@ export function settingsView() {
         // then stored exactly as typed. Same trade the deal form's
         // confidence percent already makes.
         type: 'number', min: '0', max: '100', step: '1', value: String(pct),
-        'aria-label': `${s.label} win probability, percent`,
+        'aria-label': `Вероятность выигрыша на этапе «${s.label}», %`,
         onchange: async () => {
           const v = clamp(Math.round(Number(prob.value) || 0), 0, 100);
           prob.value = String(v);
           await store.updateSettings({
             stageProbabilities: { ...store.settings.stageProbabilities, [s.id]: v / 100 },
-          }).catch(() => toast('Couldn’t save. Check your connection', { icon: 'wifiOff' }));
+          }).catch(() => toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' }));
         },
       });
 
       const move = (dir) => el(`button.icon-btn.stage-move.stage-move-${dir > 0 ? 'down' : 'up'}`, {
         type: 'button',
         html: icon(dir > 0 ? 'chevD' : 'chevU', 17, 2.2),
-        'aria-label': `Move ${s.label} ${dir > 0 ? 'later' : 'earlier'}`,
+        'aria-label': `Переместить «${s.label}» ${dir > 0 ? 'ниже' : 'выше'}`,
         disabled: dir > 0 ? i === open.length - 1 : i === 0,
         onclick: () => {
           const list = currentOpen();
@@ -221,9 +247,9 @@ export function settingsView() {
       const remove = el('button.icon-btn.stage-remove', {
         type: 'button',
         html: icon('trash', 16, 2),
-        'aria-label': `Remove stage ${s.label}`,
+        'aria-label': `Удалить этап «${s.label}»`,
         disabled: open.length <= 1,
-        title: open.length <= 1 ? 'A pipeline needs at least one open stage' : null,
+        title: open.length <= 1 ? 'В воронке должен остаться хотя бы один открытый этап' : null,
         onclick: async () => {
           const held = store.deals.filter((d) => d.stage === s.id);
           const targets = open.filter((o) => o.id !== s.id);
@@ -234,17 +260,17 @@ export function settingsView() {
             remap = { [s.id]: to };
           } else {
             const ok = await confirmDialog({
-              title: `Remove ${s.label}?`,
-              message: 'No deals are in this stage, so nothing moves. You can add it back later.',
-              confirmLabel: 'Remove stage',
+              title: `Удалить этап «${s.label}»?`,
+              message: 'На этом этапе нет сделок, переносить ничего не нужно. Этап можно добавить снова позже.',
+              confirmLabel: 'Удалить этап',
             });
             if (!ok) return;
           }
           await saveStages(targets, {
             remap,
             message: (moved) => moved
-              ? `${s.label} removed · ${moved} deal${moved === 1 ? '' : 's'} moved`
-              : `${s.label} removed`,
+              ? `Этап «${s.label}» удалён · ${moved} ${plural(moved, ['сделка перенесена', 'сделки перенесены', 'сделок перенесено'])}`
+              : `Этап «${s.label}» удалён`,
           });
         },
       });
@@ -278,31 +304,31 @@ export function settingsView() {
         type: 'button',
         html: icon('plus', 14, 2.2),
         disabled: atCap,
-        title: atCap ? `A board holds at most ${MAX_OPEN_STAGES} open stages` : null,
+        title: atCap ? `Максимум открытых этапов на доске: ${MAX_OPEN_STAGES}` : null,
         onclick: () => {
           const list = currentOpen();
-          const label = 'New stage';
+          const label = 'Новый этап';
           const id = makeStageId(label, new Set(list.map((x) => x.id)));
           list.push({ id, label, probability: 0.5 });
           // Land the caret in the new name so it can be typed over at once.
           saveStages(list, { focus: { id, control: '.stage-name-input', select: true } });
         },
-      }, ' Add stage'),
+      }, ' Добавить этап'),
       el('button.btn.btn-ghost.btn-sm', {
         type: 'button',
         html: icon('reset', 14, 2),
         onclick: async () => {
           const ok = await confirmDialog({
-            title: 'Reset stages?',
-            message: 'The default funnel (New, Qualified, Proposal, Negotiation) and default win probabilities come back. Deals in stages that no longer exist move to the first stage.',
-            confirmLabel: 'Reset stages',
+            title: 'Сбросить этапы?',
+            message: 'Вернутся стандартная воронка (Новая, Квалификация, Предложение, Переговоры) и стандартные вероятности. Сделки с этапов, которых больше нет, перейдут на первый этап.',
+            confirmLabel: 'Сбросить этапы',
             danger: false,
           });
           if (!ok) return;
           await store.updateSettings({ stageProbabilities: {} }).catch(() => {});
-          await saveStages(null, { message: 'Stages reset to defaults' });
+          await saveStages(null, { message: 'Этапы сброшены' });
         },
-      }, ' Reset to defaults')
+      }, ' Вернуть по умолчанию')
     ));
 
     if (focus) {
@@ -325,7 +351,7 @@ export function settingsView() {
      One record type is edited at a time, because a founder adds a field
      while thinking about one kind of record. */
   let fieldKind = CUSTOM_KINDS[0].key;
-  const fieldKindGroup = el('div.seg-group', { role: 'group', 'aria-label': 'Fields for' });
+  const fieldKindGroup = el('div.seg-group', { role: 'group', 'aria-label': 'Поля для' });
   const fieldRows = el('div.stage-edit-list.field-edit-list');
 
   /** The current definitions as a fresh, mutable copy. */
@@ -349,8 +375,8 @@ export function settingsView() {
       // The store refuses a type change it can't make without losing a
       // value; anything else is the connection.
       toast(err.message === 'custom-field-type'
-        ? 'Some records hold a value that can’t be read as that type'
-        : 'Couldn’t save. Check your connection',
+        ? 'В некоторых записях значения не подходят к этому типу'
+        : 'Не удалось сохранить. Проверьте подключение',
       { icon: err.message === 'custom-field-type' ? 'alert' : 'wifiOff' });
     }
   }
@@ -377,12 +403,11 @@ export function settingsView() {
   function renderFieldRows(focus = null) {
     clear(fieldRows);
     const fields = currentFields();
-    const kind = CUSTOM_KINDS.find((k) => k.key === fieldKind);
 
     fields.forEach((field, i) => {
       const name = el('input.input.field-name-input', {
         type: 'text', value: field.name, maxlength: MAX_FIELD_NAME, autocomplete: 'off',
-        'aria-label': `Field ${i + 1} name`,
+        'aria-label': `Название поля ${i + 1}`,
         onchange: () => {
           const label = name.value.trim();
           if (!label || label === field.name) { name.value = field.name; return; }
@@ -393,7 +418,7 @@ export function settingsView() {
       });
 
       const type = el('select.select.field-type-select', {
-        'aria-label': `${field.name} type`,
+        'aria-label': `Тип поля «${field.name}»`,
         onchange: async () => {
           const next = type.value;
           if (next === field.type) return;
@@ -404,9 +429,9 @@ export function settingsView() {
             type.value = field.type;
             const n = report.blocked.length;
             await confirmDialog({
-              title: `Can’t make ${field.name} a ${fieldTypeInfo(next).label} field`,
-              message: `${n} ${n === 1 ? kind.one : kind.label.toLowerCase()} hold${n === 1 ? 's' : ''} a value that isn’t ${fieldTypeInfo(next).noun}, and changing the type would throw ${n === 1 ? 'it' : 'them'} away. Clear or fix those values first.`,
-              confirmLabel: 'Got it',
+              title: `Нельзя сменить тип поля «${field.name}»`,
+              message: `${n === 1 ? 'Есть значение, которое' : 'Есть значения, которые'} нельзя прочитать как ${TYPE_AS[next] || fieldTypeInfo(next).label}: ${countLabel(n, KIND_FORMS[fieldKind] || RECORD_FORMS)}. При смене типа ${n === 1 ? 'оно пропадёт' : 'они пропадут'}. Сначала очистите или исправьте эти значения.`,
+              confirmLabel: 'Понятно',
               danger: false,
               cancelLabel: null,
             });
@@ -414,9 +439,9 @@ export function settingsView() {
           }
           if (report.total) {
             const ok = await confirmDialog({
-              title: `Change ${field.name} to ${fieldTypeInfo(next).label}?`,
-              message: `${report.total} stored value${report.total === 1 ? '' : 's'} will be converted.`,
-              confirmLabel: 'Change type',
+              title: `Сменить тип поля «${field.name}» на «${fieldTypeInfo(next).label}»?`,
+              message: `${countLabel(report.total, ['сохранённое значение будет преобразовано', 'сохранённых значения будут преобразованы', 'сохранённых значений будет преобразовано'])}.`,
+              confirmLabel: 'Сменить тип',
               danger: false,
             });
             if (!ok) { type.value = field.type; return; }
@@ -433,7 +458,7 @@ export function settingsView() {
       const move = (dir) => el(`button.icon-btn.stage-move.stage-move-${dir > 0 ? 'down' : 'up'}`, {
         type: 'button',
         html: icon(dir > 0 ? 'chevD' : 'chevU', 17, 2.2),
-        'aria-label': `Move ${field.name} ${dir > 0 ? 'later' : 'earlier'}`,
+        'aria-label': `Переместить «${field.name}» ${dir > 0 ? 'ниже' : 'выше'}`,
         disabled: dir > 0 ? i === fields.length - 1 : i === 0,
         onclick: () => {
           const list = currentFields();
@@ -451,29 +476,29 @@ export function settingsView() {
       const remove = el('button.icon-btn.stage-remove', {
         type: 'button',
         html: icon('trash', 16, 2),
-        'aria-label': `Remove field ${field.name}`,
+        'aria-label': `Удалить поле «${field.name}»`,
         onclick: async () => {
           const n = valueCount(field);
           const ok = await confirmDialog({
-            title: `Remove ${field.name}?`,
+            title: `Удалить поле «${field.name}»?`,
             message: n
-              ? `${n} ${n === 1 ? kind.one : kind.label.toLowerCase()} ${n === 1 ? 'has' : 'have'} a value in this field, and ${n === 1 ? 'it goes' : 'they go'} with it. This can’t be undone.`
-              : 'No records have a value in this field, so nothing else changes. You can add it back later.',
-            confirmLabel: 'Remove field',
+              ? `Поле заполнено: ${countLabel(n, KIND_FORMS[fieldKind] || RECORD_FORMS)}. Значения удалятся вместе с полем, отменить это нельзя.`
+              : 'Поле нигде не заполнено, больше ничего не изменится. Его можно добавить снова позже.',
+            confirmLabel: 'Удалить поле',
           });
           if (!ok) return;
           await saveFields(fields.filter((f) => f.id !== field.id), {
             message: (result) => (result.removed
-              ? `${field.name} removed · ${result.removed} value${result.removed === 1 ? '' : 's'} deleted`
-              : `${field.name} removed`),
+              ? `Поле «${field.name}» удалено · ${result.removed} ${plural(result.removed, ['значение удалено', 'значения удалены', 'значений удалено'])}`
+              : `Поле «${field.name}» удалено`),
           });
         },
       });
 
       const optionsInput = hasOptions(field.type) && el('input.input.field-options-input', {
         type: 'text', value: (field.options || []).join(', '), autocomplete: 'off',
-        placeholder: 'e.g. Strong, Medium, Weak',
-        'aria-label': `${field.name} choices, comma separated`,
+        placeholder: 'например: Высокий, Средний, Низкий',
+        'aria-label': `Варианты поля «${field.name}» через запятую`,
         onchange: () => {
           const list = currentFields();
           list[i].options = optionsInput.value.split(',')
@@ -493,16 +518,16 @@ export function settingsView() {
         el('div.stage-edit-controls', {}, move(-1), move(1), remove),
         optionsInput && el('div.field-edit-options', {},
           optionsInput,
-          el('span.field-hint', {}, 'Choices, separated by commas.')
+          el('span.field-hint', {}, 'Варианты через запятую.')
         ),
         n > 0 && el('span.field-edit-note', {},
-          `${n} ${n === 1 ? kind.one : kind.label.toLowerCase()} with a value`)
+          `Заполнено: ${countLabel(n, KIND_FORMS[fieldKind] || RECORD_FORMS)}`)
       ));
     });
 
     if (!fields.length) {
       fieldRows.append(el('p.card-empty', {},
-        `No extra fields on ${kind.label.toLowerCase()} yet. Add one for whatever this business tracks that the built-in fields don’t.`));
+        `У ${KIND_GENITIVE[fieldKind] || 'этих записей'} пока нет своих полей. Добавьте поле для того, что важно вашему бизнесу и чего нет среди стандартных.`));
     }
 
     const atCap = fields.length >= MAX_CUSTOM_FIELDS;
@@ -511,7 +536,7 @@ export function settingsView() {
         type: 'button',
         html: icon('plus', 14, 2.2),
         disabled: atCap,
-        title: atCap ? `At most ${MAX_CUSTOM_FIELDS} fields per record type` : null,
+        title: atCap ? `Максимум своих полей для одного типа записей: ${MAX_CUSTOM_FIELDS}` : null,
         onclick: () => {
           const field = blankField(new Set(fields.map((f) => f.id)));
           // Land the caret in the new name so it can be typed over at once.
@@ -519,7 +544,7 @@ export function settingsView() {
             focus: { id: field.id, control: '.field-name-input', select: true },
           });
         },
-      }, ' Add field')
+      }, ' Добавить поле')
     ));
 
     if (focus) {
@@ -560,7 +585,7 @@ export function settingsView() {
           try {
             await store.updateSettings({ notifications: false });
           } catch {
-            toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+            toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' });
           }
           renderNotify();
           return;
@@ -569,8 +594,8 @@ export function settingsView() {
         if (result !== 'granted') {
           renderNotify();
           toast(result === 'denied'
-            ? 'Your browser is blocking notifications for this site'
-            : 'Notifications weren’t enabled', { icon: 'alert' });
+            ? 'Браузер блокирует уведомления для этого сайта'
+            : 'Уведомления не включены', { icon: 'alert' });
           return;
         }
         // The success message is reserved for a save that actually
@@ -580,22 +605,22 @@ export function settingsView() {
           await store.updateSettings({ notifications: true });
         } catch {
           renderNotify();
-          toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+          toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' });
           return;
         }
         renderNotify();
-        toast('Reminders on. You’ll get a nudge while the app is open', { icon: 'check' });
+        toast('Напоминания включены. Они приходят, пока приложение открыто', { icon: 'check' });
       },
     }, el('span.switch-knob', { 'aria-hidden': 'true' }));
 
     notifyRow.append(el('div.switch-row', {},
       el('div.grow.min0', {},
-        el('label.title', { for: 'notify-switch' }, 'Browser notifications'),
+        el('label.title', { for: 'notify-switch' }, 'Уведомления в браузере'),
         el('div.sub', {}, unsupported
-          ? 'This browser doesn’t support notifications.'
+          ? 'Этот браузер не поддерживает уведомления.'
           : blocked
-            ? 'Blocked for this site. Allow notifications in your browser settings first.'
-            : 'A summary the first time you open the app each day, plus a nudge when a timed follow-up comes due.')
+            ? 'Заблокированы для этого сайта. Сначала разрешите уведомления в настройках браузера.'
+            : 'Сводка при первом за день открытии приложения и напоминание, когда подходит срок задачи со временем.')
       ),
       toggle
     ));
@@ -619,15 +644,15 @@ export function settingsView() {
         try {
           await store.updateSettings({ nextStepNudges: !on });
         } catch {
-          toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+          toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' });
         }
         renderNudges();
       },
     }, el('span.switch-knob', { 'aria-hidden': 'true' }));
     nudgeRow.append(el('div.switch-row', {},
       el('div.grow.min0', {},
-        el('label.title', { for: 'nudge-switch' }, 'Next-step nudges'),
-        el('div.sub', {}, 'After you complete a follow-up, log an activity, or move a deal, offer to schedule the next one when nothing else is booked.')
+        el('label.title', { for: 'nudge-switch' }, 'Подсказки о следующем шаге'),
+        el('div.sub', {}, 'Когда вы завершаете задачу, записываете в историю или переносите сделку, а дальше ничего не запланировано, приложение предложит поставить следующую задачу.')
       ),
       toggle
     ));
@@ -656,7 +681,7 @@ export function settingsView() {
         try {
           await store.updateSettings({ aiAssist: !on });
         } catch {
-          toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+          toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' });
         }
         renderAI();
       },
@@ -664,16 +689,16 @@ export function settingsView() {
 
     aiRow.append(el('div.switch-row', {},
       el('div.grow.min0', {},
-        el('label.title', { for: 'ai-switch' }, 'AI assist'),
+        el('label.title', { for: 'ai-switch' }, 'ИИ-помощник'),
         el('div.sub', {}, available
-          ? 'Adds three buttons: read pasted text into a new lead or company, draft an email, and catch up on a long history. Each one is a button you press, the result lands in a field you can edit, and nothing is saved on its own.'
-          : 'AI is not connected on this server, so the assist buttons stay hidden.')
+          ? 'Добавляет три кнопки: разобрать вставленный текст в новый контакт или компанию, набросать письмо и кратко пересказать длинную историю. Каждая срабатывает только по нажатию, результат попадает в поле, которое можно поправить, и ничего не сохраняется само.'
+          : 'ИИ на этом сервере не подключён, поэтому кнопки помощника скрыты.')
       ),
       toggle
     ));
     if (available) {
       aiRow.append(el('p.settings-note.mt-sm', {},
-        'When you press one, the record you pressed it on - and nothing else - is sent to Puter’s AI for that one request. Turn this off and the app never contacts a model.'));
+        'По нажатию кнопки в ИИ уходит только та запись, на которой вы её нажали, и только для этого запроса. Если выключить помощника, приложение не обращается к модели совсем.'));
     }
     if (hadFocus && !toggle.disabled) toggle.focus();
   }
@@ -690,14 +715,14 @@ export function settingsView() {
         const v = clamp(Math.round(Number(input.value) || 0), 0, 365);
         input.value = String(v);
         await store.updateSettings({ [key]: v })
-          .catch(() => toast('Couldn’t save. Check your connection', { icon: 'wifiOff' }));
+          .catch(() => toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' }));
       },
     });
     settingsFields.push(() => { input.value = String(store.settings[key] ?? fallback); });
     return el('div.threshold-field', {},
       el('label.field-label.grow', { for: id }, label),
       input,
-      el('span.prob-unit', {}, 'days'),
+      el('span.prob-unit', {}, 'дн.'),
       el('span.field-hint', {}, hint)
     );
   }
@@ -711,17 +736,17 @@ export function settingsView() {
     type: 'number', min: '0', step: '1', inputmode: 'decimal',
     value: store.settings.revenueGoal ? String(store.settings.revenueGoal) : '',
     placeholder: '0',
-    'aria-label': `Monthly revenue goal in ${store.settings.currency}`,
+    'aria-label': `План выручки на месяц, ${store.settings.currency}`,
     onchange: async () => {
       const v = Math.max(0, Math.round(Number(goalInput.value) || 0));
       goalInput.value = v ? String(v) : '';
       try {
         await store.updateSettings({ revenueGoal: v });
       } catch {
-        toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+        toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' });
         return;
       }
-      toast(v ? `Goal set to ${formatMoney(v, store.settings.currency)}` : 'Goal cleared');
+      toast(v ? `План: ${formatMoney(v, store.settings.currency)}` : 'План сброшен');
     },
   });
 
@@ -745,7 +770,7 @@ export function settingsView() {
         try {
           await store.updateSettings({ touchTargets: next });
         } catch {
-          toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+          toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' });
           return;
         }
         syncTouchHint();
@@ -761,9 +786,9 @@ export function settingsView() {
   function touchTotalField() {
     const { id, input } = touchInput('all');
     return el('div.threshold-field', {},
-      el('label.field-label.grow', { for: id }, 'Touches of any kind'),
+      el('label.field-label.grow', { for: id }, 'Всего касаний'),
       input,
-      el('span.prob-unit', {}, 'a week')
+      el('span.prob-unit', {}, 'в неделю')
     );
   }
 
@@ -773,7 +798,7 @@ export function settingsView() {
     return el('div.touch-types', {}, ACTIVITY_TYPES.map((t) => {
       const { id, input } = touchInput(t.value);
       return el('div.touch-type', {},
-        el('label.field-label', { for: id }, `${t.label}s`),
+        el('label.field-label', { for: id }, ACTIVITY_PLURAL[t.value] || t.label),
         input
       );
     }));
@@ -784,19 +809,21 @@ export function settingsView() {
     const total = touchTarget(store.settings.touchTargets);
     const targets = normalizeTouchTargets(store.settings.touchTargets);
     const perType = ACTIVITY_TYPES.filter((t) => targets[t.value] > 0)
-      .map((t) => `${targets[t.value]} ${t.label.toLowerCase()}${targets[t.value] === 1 ? '' : 's'}`);
+      .map((t) => (ACTIVITY_FORMS[t.value]
+        ? countLabel(targets[t.value], ACTIVITY_FORMS[t.value])
+        : `${targets[t.value]} ${t.label.toLowerCase()}`));
     touchHint.textContent = total
-      ? `Aiming at ${total} touch${total === 1 ? '' : 'es'} a week`
+      ? `План: ${countLabel(total, ['касание', 'касания', 'касаний'])} в неделю`
         + (perType.length ? ` · ${perType.join(', ')}` : '')
-        + (targets.all && perType.length ? ' (the overall figure is the one measured)' : '')
-      : 'No target set. The dashboard and the activity log show one once you set a number here.';
+        + (targets.all && perType.length ? ' (в расчёт идёт общее число)' : '')
+      : 'План не задан. Когда вы укажете число, план появится на главной и в истории.';
   }
   syncTouchHint();
   touchInputs.push(syncTouchHint);
 
   function syncCurrencyLabels() {
     goalCurrency.textContent = store.settings.currency;
-    goalInput.setAttribute('aria-label', `Monthly revenue goal in ${store.settings.currency}`);
+    goalInput.setAttribute('aria-label', `План выручки на месяц, ${store.settings.currency}`);
   }
 
   settingsFields.push(() => {
@@ -858,7 +885,7 @@ export function settingsView() {
     clear(templatesList);
     if (!store.templates.length) {
       templatesList.append(el('p.card-empty', {},
-        'The emails you send on repeat (cold intro, recap, check-in), written once and filled from the record you send them from.'));
+        'Письма, которые вы отправляете снова и снова (первое знакомство, итоги встречи, напоминание): пишутся один раз и заполняются из записи, с которой вы их отправляете.'));
       return;
     }
     templatesList.append(el('div.settings-list', {},
@@ -866,27 +893,27 @@ export function settingsView() {
         el('div.settings-row.static', {},
           el('span.row-ic', { html: icon('mail', 20, 1.8) }),
           el('div.grow.min0', {},
-            el('div.title', {}, t.name || 'Untitled'),
+            el('div.title', {}, t.name || 'Без названия'),
             t.subject && el('div.sub', {}, t.subject)
           ),
           el('button.icon-btn', {
             html: icon('pencil', 16, 2),
-            'aria-label': `Edit template ${t.name}`,
+            'aria-label': `Изменить шаблон «${t.name}»`,
             onclick: () => openTemplateForm(t, { onSaved: renderTemplates }),
           }),
           el('button.icon-btn', {
             html: icon('trash', 16, 2),
-            'aria-label': `Delete template ${t.name}`,
+            'aria-label': `Удалить шаблон «${t.name}»`,
             onclick: async () => {
               const ok = await confirmDialog({
-                title: `Delete “${t.name}”?`,
-                message: 'The template goes to Recently deleted for 30 days. Emails already logged stay.',
+                title: `Удалить шаблон «${t.name}»?`,
+                message: 'Шаблон попадёт в корзину на 30 дней. Уже записанные письма останутся.',
               });
               if (!ok) return;
               try {
-                deletedToast('Template deleted', await store.deleteTemplate(t.id));
+                deletedToast('Шаблон удалён', await store.deleteTemplate(t.id));
               } catch {
-                toast('Couldn’t delete. Check your connection', { icon: 'wifiOff' });
+                toast('Не удалось удалить. Проверьте подключение', { icon: 'wifiOff' });
               }
               renderTemplates();
             },
@@ -901,7 +928,7 @@ export function settingsView() {
   const newPlaybookBtn = el('button.btn.btn-ghost.btn-sm', {
     html: icon('plus', 14, 2.2),
     onclick: () => openPlaybookForm(null, { onSaved: renderPlaybooks }),
-  }, ' New');
+  }, ' Новый');
   const renderPlaybooks = () => refocusList(playbooksList, buildPlaybooks);
   function buildPlaybooks() {
     clear(playbooksList);
@@ -910,10 +937,10 @@ export function settingsView() {
     // itself on every render rather than at page build time.
     newPlaybookBtn.disabled = books.length >= MAX_PLAYBOOKS;
     newPlaybookBtn.title = newPlaybookBtn.disabled
-      ? `At most ${MAX_PLAYBOOKS} playbooks` : null;
+      ? `Максимум сценариев: ${MAX_PLAYBOOKS}` : null;
     if (!books.length) {
       playbooksList.append(el('p.card-empty', {},
-        'No playbooks yet. Save the steps you run after a demo - recap the same day, nudge in three days, check in after two weeks - and apply them to a lead or deal in one click.'));
+        'Сценариев пока нет. Сохраните шаги, которые вы делаете после демо (итоги в тот же день, напоминание через три дня, звонок через две недели), и применяйте их к контакту или сделке в один клик.'));
       return;
     }
     const stages = store.stages();
@@ -924,11 +951,11 @@ export function settingsView() {
         el('div.grow.min0', {},
           el('div.title', {}, book.name),
           el('div.sub', {}, playbookSummary(book)
-            + (stage ? ` · offered on ${stage.label}` : ''))
+            + (stage ? ` · предлагается на этапе «${stage.label}»` : ''))
         ),
         el('button.icon-btn', {
           html: icon('pencil', 16, 2),
-          'aria-label': `Edit playbook ${book.name}`,
+          'aria-label': `Изменить сценарий «${book.name}»`,
           onclick: () => openPlaybookForm(book, { onSaved: renderPlaybooks }),
         })
       );
@@ -939,27 +966,27 @@ export function settingsView() {
   /* ----- tags ----- */
   const tagsList = el('div');
   const renderTags = (renamedTo = null) =>
-    refocusList(tagsList, buildTags, renamedTo && `Rename tag ${renamedTo}`);
+    refocusList(tagsList, buildTags, renamedTo && `Переименовать метку «${renamedTo}»`);
   function buildTags() {
     clear(tagsList);
     const all = store.allTags();
     if (!all.length) {
       tagsList.append(el('p.card-empty', {},
-        'No tags yet. Add them on a lead, company, or deal to slice your book any way a fixed field can’t.'));
+        'Меток пока нет. Добавляйте их контактам, компаниям и сделкам, чтобы группировать записи так, как не позволяют обычные поля.'));
       return;
     }
     tagsList.append(el('div.settings-list', {}, all.map((t) => {
       const name = el('input.input.tag-name-input', {
         type: 'text', value: t.name, maxlength: 40, autocomplete: 'off',
-        'aria-label': `Rename tag ${t.name}`,
+        'aria-label': `Переименовать метку «${t.name}»`,
         onchange: async () => {
           const next = name.value.trim();
           if (!next || next === t.name) { name.value = t.name; return; }
           try {
             const n = await store.renameTag(t.name, next);
-            toast(`Tag renamed on ${n} record${n === 1 ? '' : 's'}`);
+            toast(`Метка переименована в ${countLabel(n, ['записи', 'записях', 'записях'])}`);
           } catch {
-            toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+            toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' });
           }
           renderTags(next);
         },
@@ -968,23 +995,23 @@ export function settingsView() {
         el('span.row-ic', { html: icon('tag', 18, 2) }),
         el('div.grow.min0', {},
           name,
-          el('div.sub', {}, `${t.count} record${t.count === 1 ? '' : 's'}`)
+          el('div.sub', {}, countLabel(t.count, RECORD_FORMS))
         ),
         el('button.icon-btn', {
           html: icon('trash', 16, 2),
-          'aria-label': `Delete tag ${t.name}`,
+          'aria-label': `Удалить метку «${t.name}»`,
           onclick: async () => {
             const ok = await confirmDialog({
-              title: `Delete the tag “${t.name}”?`,
-              message: `It comes off ${t.count} record${t.count === 1 ? '' : 's'}. The records themselves stay exactly as they are.`,
-              confirmLabel: 'Delete tag',
+              title: `Удалить метку «${t.name}»?`,
+              message: `Метка снимется с ${countLabel(t.count, ['записи', 'записей', 'записей'])}. Сами записи не изменятся.`,
+              confirmLabel: 'Удалить метку',
             });
             if (!ok) return;
             try {
               await store.deleteTag(t.name);
-              toast('Tag deleted', { icon: 'trash' });
+              toast('Метка удалена', { icon: 'trash' });
             } catch {
-              toast('Couldn’t delete. Check your connection', { icon: 'wifiOff' });
+              toast('Не удалось удалить. Проверьте подключение', { icon: 'wifiOff' });
             }
             renderTags();
           },
@@ -1001,16 +1028,16 @@ export function settingsView() {
     try {
       await store.restoreBackup();
       syncSettingsUI();
-      toast('Previous data restored', { icon: 'undo' });
+      toast('Прежние данные восстановлены', { icon: 'undo' });
     } catch {
-      toast('Couldn’t restore. Check your connection', { icon: 'wifiOff' });
+      toast('Не удалось восстановить. Проверьте подключение', { icon: 'wifiOff' });
     }
   }
 
   function exportData() {
     downloadFile(`crm-export-${todayISO()}.json`,
       JSON.stringify(store.exportAll(), null, 2), 'application/json');
-    toast('Export downloaded', { icon: 'fileDown' });
+    toast('Экспорт скачан', { icon: 'fileDown' });
   }
 
   function importData() {
@@ -1019,13 +1046,13 @@ export function settingsView() {
       try {
         data = JSON.parse(await file.text());
       } catch {
-        toast('That file isn’t valid JSON', { icon: 'alert' });
+        toast('Файл не читается как JSON', { icon: 'alert' });
         return;
       }
       const ok = await confirmDialog({
-        title: 'Replace everything?',
-        message: 'Importing replaces all current leads, companies, deals, follow-ups, and history with the file’s contents. A snapshot of what you have now is kept, so this is reversible.',
-        confirmLabel: 'Import and replace',
+        title: 'Заменить все данные?',
+        message: 'Импорт заменит все контакты, компании, сделки, задачи и историю содержимым файла. Текущие данные сохранятся в снимке, так что импорт можно отменить.',
+        confirmLabel: 'Импортировать и заменить',
       });
       if (!ok) return;
       const hadData = store.hasData();
@@ -1035,23 +1062,23 @@ export function settingsView() {
         // the app and this view now rather than on the next full reload.
         syncSettingsUI();
         // The snapshot taken inside importAll makes this reversible.
-        toast('Import complete', {
+        toast('Импорт завершён', {
           icon: 'fileUp',
-          action: hadData && { label: 'Undo', onClick: undoBulk },
+          action: hadData && { label: 'Отменить', onClick: undoBulk },
         });
       } catch (err) {
         console.error(err);
         toast(err.message === 'Not a CRM export file'
-          ? 'That file isn’t a CRM export' : 'Import failed. Check your connection', { icon: 'alert' });
+          ? 'Это не файл экспорта CRM' : 'Импорт не удался. Проверьте подключение', { icon: 'alert' });
       }
     });
   }
 
   async function loadSample() {
     const ok = await confirmDialog({
-      title: 'Load sample data?',
-      message: 'Your current data is replaced with a demo pipeline you can explore. A snapshot is kept first, so you can bring your data back.',
-      confirmLabel: 'Load sample data',
+      title: 'Загрузить демо-данные?',
+      message: 'Текущие данные заменятся демонстрационной воронкой. Перед этим сохранится снимок, так что свои данные можно вернуть.',
+      confirmLabel: 'Загрузить демо-данные',
       danger: store.contacts.length > 0 || store.deals.length > 0,
     });
     if (!ok) return;
@@ -1059,20 +1086,20 @@ export function settingsView() {
     try {
       await store.importAll(sampleDataset(store), { reason: 'sample' });
       syncSettingsUI();
-      toast('Sample data loaded', {
+      toast('Демо-данные загружены', {
         icon: 'sparkle',
-        action: hadData && { label: 'Undo', onClick: undoBulk },
+        action: hadData && { label: 'Отменить', onClick: undoBulk },
       });
     } catch {
-      toast('Couldn’t load sample data. Check your connection', { icon: 'wifiOff' });
+      toast('Не удалось загрузить демо-данные. Проверьте подключение', { icon: 'wifiOff' });
     }
   }
 
   async function eraseAll() {
     const ok = await confirmDialog({
-      title: 'Erase all data?',
-      message: 'Every lead, company, deal, follow-up, and activity is removed from the server. A one-slot snapshot is kept so you can undo it from here - nothing else is.',
-      confirmLabel: 'Erase everything',
+      title: 'Удалить все данные?',
+      message: 'Все контакты, компании, сделки, задачи и записи истории будут удалены с сервера. Останется только один снимок, из которого всё можно вернуть здесь же.',
+      confirmLabel: 'Удалить всё',
     });
     if (!ok) return;
     const hadData = store.hasData();
@@ -1084,13 +1111,13 @@ export function settingsView() {
       }, { reason: 'erase' });
       await store.emptyTrash();
       syncSettingsUI();
-      toast('All data erased', {
+      toast('Все данные удалены', {
         icon: 'trash',
-        action: hadData && { label: 'Undo', onClick: undoBulk },
+        action: hadData && { label: 'Отменить', onClick: undoBulk },
       });
       location.hash = '#/';
     } catch {
-      toast('Couldn’t erase. Check your connection', { icon: 'wifiOff' });
+      toast('Не удалось удалить данные. Проверьте подключение', { icon: 'wifiOff' });
     }
   }
 
@@ -1114,8 +1141,8 @@ export function settingsView() {
     if (!pending.length) {
       syncRow.append(el('p.card-empty', {},
         store.offline.offline
-          ? 'Working offline. Everything you have changed is already in the server; anything you change now is kept here and sent when it answers.'
-          : 'Everything is on the server. Changes made offline wait here until it answers.'));
+          ? 'Нет связи. Всё, что вы меняли раньше, уже на сервере; новые изменения хранятся здесь и уйдут, когда сервер ответит.'
+          : 'Всё на сервере. Изменения, сделанные без связи, ждут здесь, пока сервер не ответит.'));
       return;
     }
     syncRow.append(el('div.settings-list', {},
@@ -1124,8 +1151,8 @@ export function settingsView() {
         el('div.grow.min0', {},
           el('div.title', {}, kvLabel(row.key)),
           el('div.sub', {}, row.conflict
-            ? 'Also changed somewhere else - needs a decision'
-            : `Saved on this device ${timeAgo(row.at)}`)
+            ? 'Изменено и в другом месте — нужно выбрать версию'
+            : `Сохранено на этом устройстве ${timeAgo(row.at)}`)
         )
       ))
     ),
@@ -1134,7 +1161,7 @@ export function settingsView() {
         type: 'button',
         html: icon(conflicts.length ? 'alert' : 'upload', 14, 2),
         onclick: openOfflineSheet,
-      }, conflicts.length ? ' Review' : ' Try again now')
+      }, conflicts.length ? ' Разобраться' : ' Повторить сейчас')
     ));
   }
   renderSync();
@@ -1149,27 +1176,27 @@ export function settingsView() {
     try {
       data = await readBackup(b.path);
     } catch {
-      toast('Couldn’t read that backup. Check your connection', { icon: 'wifiOff' });
+      toast('Не удалось прочитать резервную копию. Проверьте подключение', { icon: 'wifiOff' });
       return;
     }
     const ok = await confirmDialog({
-      title: 'Restore this backup?',
-      message: `Everything is replaced with the backup from ${formatDate(todayISO(new Date(b.at)), { year: 'always' })}. A snapshot of what you have now is kept first, so the restore itself is reversible.`,
-      confirmLabel: 'Restore backup',
+      title: 'Восстановить эту копию?',
+      message: `Все данные заменятся резервной копией от ${formatDate(todayISO(new Date(b.at)), { year: 'always' })}. Перед этим сохранится снимок текущих данных, так что восстановление можно отменить.`,
+      confirmLabel: 'Восстановить копию',
     });
     if (!ok) return;
     const hadData = store.hasData();
     try {
       await store.importAll(data, { reason: 'cloud-backup' });
       syncSettingsUI();
-      toast('Backup restored', {
+      toast('Резервная копия восстановлена', {
         icon: 'undo',
-        action: hadData && { label: 'Undo', onClick: undoBulk },
+        action: hadData && { label: 'Отменить', onClick: undoBulk },
       });
     } catch (err) {
       console.error(err);
       toast(err.message === 'Not a CRM export file'
-        ? 'That file isn’t a CRM backup' : 'Restore failed. Check your connection', { icon: 'alert' });
+        ? 'Это не резервная копия CRM' : 'Восстановление не удалось. Проверьте подключение', { icon: 'alert' });
     }
   }
 
@@ -1177,9 +1204,9 @@ export function settingsView() {
     btn.disabled = true;
     try {
       await writeBackup(store);
-      toast('Backed up to the server', { icon: 'check' });
+      toast('Резервная копия сохранена на сервере', { icon: 'check' });
     } catch {
-      toast('Backup failed. Check your connection', { icon: 'wifiOff' });
+      toast('Не удалось создать резервную копию. Проверьте подключение', { icon: 'wifiOff' });
     }
     btn.disabled = false;
     renderCloudBackups();
@@ -1191,7 +1218,7 @@ export function settingsView() {
     // a slow connection it stood blank and read as "no backups" - the one
     // wrong answer to give about the copies that exist to be relied on.
     clear(cloudBackups);
-    cloudBackups.append(el('p.card-empty', {}, 'Checking your backups folder…'));
+    cloudBackups.append(el('p.card-empty', {}, 'Проверяем папку с резервными копиями…'));
     let backups;
     try {
       backups = await listBackups();
@@ -1201,17 +1228,17 @@ export function settingsView() {
     clear(cloudBackups);
     if (backups === null) {
       cloudBackups.append(el('p.card-empty', {},
-        'Couldn’t reach your backups folder. Check your connection.'));
+        'Не удалось открыть папку с резервными копиями. Проверьте подключение.'));
       return;
     }
     if (!backups.length) {
       cloudBackups.append(el('p.card-empty', {},
-        'No backups yet. One is written automatically when you open the app, or make one now.'));
+        'Резервных копий пока нет. Копия создаётся автоматически при открытии приложения, можно сделать её и сейчас.'));
       return;
     }
     cloudBackups.append(
       el('div.settings-body', {},
-        el('p.settings-note', {}, `Last automatic backup: ${timeAgo(backups[0].at)}.`)
+        el('p.settings-note', {}, `Последняя автоматическая копия: ${timeAgo(backups[0].at)}.`)
       ),
       el('div.settings-list', {}, backups.map((b) => el('div.settings-row.static', {},
         el('span.row-ic', { html: icon('fileDown', 20, 1.8) }),
@@ -1221,21 +1248,21 @@ export function settingsView() {
         ),
         el('button.icon-btn', {
           html: icon('download', 16, 2),
-          'aria-label': `Download backup from ${timeAgo(b.at)}`,
+          'aria-label': `Скачать копию, сохранённую ${timeAgo(b.at)}`,
           onclick: async () => {
             try {
               const data = await readBackup(b.path);
               downloadFile(b.name, JSON.stringify(data, null, 2), 'application/json');
-              toast('Backup downloaded', { icon: 'fileDown' });
+              toast('Резервная копия скачана', { icon: 'fileDown' });
             } catch {
-              toast('Couldn’t read that backup. Check your connection', { icon: 'wifiOff' });
+              toast('Не удалось прочитать резервную копию. Проверьте подключение', { icon: 'wifiOff' });
             }
           },
         }),
         el('button.btn.btn-ghost.btn-sm', {
           html: icon('undo', 14, 2),
           onclick: () => restoreCloudBackup(b),
-        }, ' Restore')
+        }, ' Восстановить')
       )))
     );
   }
@@ -1243,13 +1270,13 @@ export function settingsView() {
 
   /* ----- recently deleted ----- */
   const TRASH_KINDS = {
-    company: { icon: 'company', label: 'Company' },
-    contact: { icon: 'user', label: 'Lead' },
-    deal: { icon: 'deal', label: 'Deal' },
-    activity: { icon: 'video', label: 'Activity' },
-    task: { icon: 'followups', label: 'Follow-up' },
-    template: { icon: 'mail', label: 'Email template' },
-    attachment: { icon: 'paperclip', label: 'File' },
+    company: { icon: 'company', label: 'Компания', restored: 'Компания восстановлена' },
+    contact: { icon: 'user', label: 'Контакт', restored: 'Контакт восстановлен' },
+    deal: { icon: 'deal', label: 'Сделка', restored: 'Сделка восстановлена' },
+    activity: { icon: 'video', label: 'Запись в истории', restored: 'Запись восстановлена' },
+    task: { icon: 'followups', label: 'Задача', restored: 'Задача восстановлена' },
+    template: { icon: 'mail', label: 'Шаблон письма', restored: 'Шаблон восстановлен' },
+    attachment: { icon: 'paperclip', label: 'Файл', restored: 'Файл восстановлен' },
   };
 
   const trashSection = el('div');
@@ -1260,17 +1287,17 @@ export function settingsView() {
     clear(trashSection);
     if (!store.trash.length) {
       trashSection.append(el('p.card-empty', {},
-        'Nothing deleted recently. Deleted records wait here for 30 days before they go for good.'));
+        'Корзина пуста. Удалённые записи хранятся здесь 30 дней, потом удаляются навсегда.'));
       return;
     }
     trashSection.append(
       el('div.settings-list', {}, store.trash.map((entry) => {
-        const kind = TRASH_KINDS[entry.kind] || { icon: 'inbox', label: 'Record' };
+        const kind = TRASH_KINDS[entry.kind] || { icon: 'inbox', label: 'Запись', restored: 'Запись восстановлена' };
         return el('div.settings-row.static', {},
           el('span.row-ic', { html: icon(kind.icon, 20, 1.8) }),
           el('div.grow.min0', {},
-            el('div.title', {}, entry.name || 'Untitled'),
-            el('div.sub', {}, `${kind.label} · deleted ${timeAgo(entry.at)}`)
+            el('div.title', {}, entry.name || 'Без названия'),
+            el('div.sub', {}, `${kind.label} · удалено ${timeAgo(entry.at)}`)
           ),
           el('button.btn.btn-ghost.btn-sm', {
             type: 'button',
@@ -1278,13 +1305,13 @@ export function settingsView() {
             onclick: async () => {
               try {
                 await store.restoreTrash(entry.id);
-                toast(`${kind.label} restored`, { icon: 'undo' });
+                toast(kind.restored, { icon: 'undo' });
               } catch {
-                toast('Couldn’t restore. Check your connection', { icon: 'wifiOff' });
+                toast('Не удалось восстановить. Проверьте подключение', { icon: 'wifiOff' });
               }
               renderTrash();
             },
-          }, ' Restore')
+          }, ' Восстановить')
         );
       })),
       el('div.settings-body', {},
@@ -1294,20 +1321,20 @@ export function settingsView() {
           onclick: async () => {
             const n = store.trash.length;
             const ok = await confirmDialog({
-              title: 'Empty the trash?',
-              message: `${n} deleted record${n === 1 ? '' : 's'} will be gone for good. This cannot be undone.`,
-              confirmLabel: 'Empty trash',
+              title: 'Очистить корзину?',
+              message: `${countLabel(n, ['запись будет удалена', 'записи будут удалены', 'записей будут удалены'])} навсегда. Отменить это нельзя.`,
+              confirmLabel: 'Очистить корзину',
             });
             if (!ok) return;
             try {
               await store.emptyTrash();
-              toast('Trash emptied', { icon: 'trash' });
+              toast('Корзина очищена', { icon: 'trash' });
             } catch {
-              toast('Couldn’t empty. Check your connection', { icon: 'wifiOff' });
+              toast('Не удалось очистить корзину. Проверьте подключение', { icon: 'wifiOff' });
             }
             renderTrash();
           },
-        }, ' Empty trash')
+        }, ' Очистить корзину')
       )
     );
     if (hadFocus) trashSection.querySelector('button')?.focus();
@@ -1321,27 +1348,27 @@ export function settingsView() {
     if (!store.backup) return;
     const when = timeAgo(store.backup.at);
     const why = {
-      sample: 'loading sample data',
-      erase: 'erasing everything',
-      restore: 'the last restore',
-      wipe: 'clearing the sample data',
-      'cloud-backup': 'restoring a cloud backup',
-    }[store.backup.reason] || 'the last import';
-    backupRow.append(dataRow('undo', 'Restore previous data',
-      `Snapshot taken ${when}, before ${why}`, async () => {
+      sample: 'загрузкой демо-данных',
+      erase: 'удалением всех данных',
+      restore: 'последним восстановлением',
+      wipe: 'очисткой демо-данных',
+      'cloud-backup': 'восстановлением резервной копии с сервера',
+    }[store.backup.reason] || 'последним импортом';
+    backupRow.append(dataRow('undo', 'Вернуть прежние данные',
+      `Снимок сделан ${when}, перед ${why}`, async () => {
         const ok = await confirmDialog({
-          title: 'Restore the snapshot?',
-          message: `Everything goes back to how it was ${when}. Your current data is snapshotted first, so you can swap back.`,
-          confirmLabel: 'Restore',
+          title: 'Восстановить снимок?',
+          message: `Всё вернётся к тому, что было ${when}. Текущие данные тоже сохранятся в снимке, так что можно будет вернуться обратно.`,
+          confirmLabel: 'Восстановить',
           danger: false,
         });
         if (!ok) return;
         try {
           await store.restoreBackup();
           syncSettingsUI();
-          toast('Previous data restored', { icon: 'undo' });
+          toast('Прежние данные восстановлены', { icon: 'undo' });
         } catch {
-          toast('Couldn’t restore. Check your connection', { icon: 'wifiOff' });
+          toast('Не удалось восстановить. Проверьте подключение', { icon: 'wifiOff' });
         }
       }));
   }
@@ -1357,17 +1384,17 @@ export function settingsView() {
     );
 
   /* ----- account ----- */
-  const username = store.user?.username || 'User';
+  const username = store.user?.username || 'Пользователь';
   const accountRows = el('div.settings-list', {},
     el('div.settings-row.static', {},
       el('span.avatar', {}, username.charAt(0).toUpperCase()),
       el('div.grow', {},
         el('div.title', {}, username),
-        el('div.sub', {}, 'Signed in')
+        el('div.sub', {}, 'Вход выполнен')
       )
     ),
     // Inside Puter's desktop the platform owns the session - no sign-out.
-    puter.env !== 'app' && dataRow('logout', 'Sign out', 'Your data stays on your server', confirmSignOut)
+    puter.env !== 'app' && dataRow('logout', 'Выйти', 'Данные останутся на сервере', confirmSignOut)
   );
 
   renderBackup();
@@ -1390,133 +1417,133 @@ export function settingsView() {
   };
 
   root.append(
-    pageHead('Settings'),
-    section('Appearance', null,
+    pageHead('Настройки'),
+    section('Оформление', null,
       el('div.settings-body', {},
         el('div.field', {},
-          el('label.field-label', {}, 'Theme'),
+          el('label.field-label', {}, 'Тема'),
           themeGroup
         ),
         el('div.field', {},
-          el('label.field-label', { for: 'currency-select' }, 'Currency'),
+          el('label.field-label', { for: 'currency-select' }, 'Валюта'),
           el('div.select-wrap', {}, Object.assign(currencySelect, { id: 'currency-select' }))
         )
       )
     ),
-    section('Pipeline stages', null,
+    section('Этапы воронки', null,
       el('div.settings-body', {},
-        el('p.settings-note', {}, 'Your funnel, in order. Rename, reorder, add, or remove stages to match how you actually sell. The percentage is how likely a deal in that stage is to close; the forecast multiplies deal values by it.'),
+        el('p.settings-note', {}, 'Ваша воронка по порядку. Переименуйте, переставьте, добавьте или удалите этапы, чтобы они совпадали с тем, как вы продаёте на самом деле. Процент — вероятность выиграть сделку на этом этапе; прогноз умножает на него суммы сделок.'),
         stageRows
       )
     ),
-    section('Custom fields', null,
+    section('Свои поля', null,
       el('div.settings-body', {},
-        el('p.settings-note', {}, 'Whatever this business tracks that the built-in fields don’t: seats, trial end date, ICP fit, who referred them. Fields appear on the add and edit forms and on detail pages, and choice and yes/no fields can filter the lists.'),
+        el('p.settings-note', {}, 'Всё, что важно вашему бизнесу и чего нет среди стандартных полей: число мест, конец пробного периода, соответствие портрету клиента, кто порекомендовал. Поля появляются в формах добавления и редактирования и на карточках, а по полям с вариантами и «да/нет» можно фильтровать списки.'),
         fieldKindGroup,
         fieldRows
       )
     ),
-    section('Reminders', null,
+    section('Напоминания', null,
       el('div.settings-body', {},
         notifyRow,
         nudgeRow,
-        el('p.settings-note.mt-sm', {}, 'Notifications only fire while the app is open in a tab. For reminders that survive a closed laptop, send your follow-ups to your calendar.')
+        el('p.settings-note.mt-sm', {}, 'Уведомления приходят, только пока приложение открыто во вкладке. Чтобы напоминания работали и при закрытом ноутбуке, выгрузите задачи в календарь.')
       ),
       el('div.settings-list', {},
-        dataRow('calendar', 'Export open follow-ups (.ics)',
-          'Every open follow-up and open deal close date, for any calendar app',
+        dataRow('calendar', 'Экспорт открытых задач (.ics)',
+          'Все открытые задачи и даты закрытия открытых сделок — для любого календаря',
           downloadOpenICS)
       )
     ),
-    section('AI assist', null,
+    section('ИИ-помощник', null,
       el('div.settings-body', {}, aiRow)
     ),
-    section('What needs attention', null,
+    section('Что требует внимания', null,
       el('div.settings-body', {},
-        el('p.settings-note', {}, 'When the board and the dashboard should start nudging you. Set either to 0 to turn that flag off.'),
-        daysField('stale-days', 'A deal has stalled after', 'staleDays', DEFAULT_STALE_DAYS,
-          'Marks board cards and lists the worst on the dashboard.'),
-        daysField('cold-days', 'A lead is going cold after', 'coldDays', DEFAULT_COLD_DAYS,
-          'Drives the Going cold filter on Leads and the dashboard card.')
+        el('p.settings-note', {}, 'Когда доска и главная начинают подсказывать. Поставьте 0, чтобы отключить отметку.'),
+        daysField('stale-days', 'Сделка зависла, если без движения', 'staleDays', DEFAULT_STALE_DAYS,
+          'Отмечает карточки на доске, самые зависшие показываются на главной.'),
+        daysField('cold-days', 'Контакт остывает, если без касаний', 'coldDays', DEFAULT_COLD_DAYS,
+          'Для фильтра «Остывает» в контактах и карточки на главной.')
       )
     ),
-    section('Monthly revenue goal', null,
+    section('План выручки на месяц', null,
       el('div.settings-body', {},
-        el('p.settings-note', {}, 'The number you sell against. The dashboard shows won revenue as progress against it (with pace for the day of the month), and the forecast draws it across the months ahead.'),
+        el('p.settings-note', {}, 'Сумма, на которую вы продаёте. Главная показывает выигранную выручку как выполнение плана (с темпом на текущий день месяца), а прогноз проводит план линией по следующим месяцам.'),
         el('div.goal-field', {},
           goalCurrency,
           Object.assign(goalInput, { id: 'revenue-goal' }),
-          el('label.field-hint', { for: 'revenue-goal' }, 'per month · leave empty for no goal')
+          el('label.field-hint', { for: 'revenue-goal' }, 'в месяц · оставьте пустым, если плана нет')
         )
       )
     ),
-    section('Weekly activity target', null,
+    section('План касаний на неделю', null,
       el('div.settings-body', {},
-        el('p.settings-note', {}, 'Revenue is what already happened; touches are what you can still do something about today. Set how many meetings, calls, emails, and notes a week you mean to log, and the dashboard and the activity log track this week against it - with pace for the day of the week.'),
+        el('p.settings-note', {}, 'Выручка — то, что уже случилось; касания — то, на что можно повлиять сегодня. Укажите, сколько встреч, звонков, писем и заметок в неделю вы собираетесь записывать в историю, и главная и история будут сравнивать с этим текущую неделю — с темпом на день недели.'),
         touchTotalField(),
-        el('p.field-hint.mt-sm', {}, 'Or set them per type - a cadence of so many calls and so many meetings.'),
+        el('p.field-hint.mt-sm', {}, 'Или задайте план по типам: столько-то звонков и столько-то встреч.'),
         touchTypeFields(),
         touchHint
       )
     ),
-    section('Email templates',
+    section('Шаблоны писем',
       el('button.btn.btn-ghost.btn-sm', {
         html: icon('plus', 14, 2.2),
         onclick: () => openTemplateForm(null, { onSaved: renderTemplates }),
-      }, ' New'),
+      }, ' Новый'),
       el('div.settings-body', {},
-        el('p.settings-note', {}, 'Use them from the Email button on a lead or deal page. Merge fields like {{firstName}} and {{dealValue}} fill from the record.')
+        el('p.settings-note', {}, 'Вызываются кнопкой «Письмо» на карточке контакта или сделки. Подстановки вроде {{firstName}} и {{dealValue}} заполняются из записи.')
       ),
       templatesList
     ),
-    section('Follow-up playbooks',
+    section('Сценарии задач',
       newPlaybookBtn,
       el('div.settings-body', {},
-        el('p.settings-note', {}, 'The steps you run every time, saved once: apply one to a lead or deal and it books the whole cadence, dated from today. A playbook can also offer itself when a deal reaches a stage - it always asks first.')
+        el('p.settings-note', {}, 'Шаги, которые вы повторяете каждый раз, сохранённые один раз: примените сценарий к контакту или сделке, и он поставит все задачи со сроками от сегодняшнего дня. Сценарий может сам предлагаться, когда сделка переходит на этап, но всегда сначала спрашивает.')
       ),
       playbooksList
     ),
-    section('Tags', null,
+    section('Метки', null,
       el('div.settings-body', {},
-        el('p.settings-note', {}, 'Every tag in use across leads, companies, and deals. Renaming updates every record wearing it; deleting only removes the label.')
+        el('p.settings-note', {}, 'Все метки контактов, компаний и сделок. Переименование меняет метку во всех записях, удаление снимает только саму метку.')
       ),
       tagsList
     ),
-    section('Your data', null,
+    section('Ваши данные', null,
       el('div.settings-list', {},
-        dataRow('merge', 'Review possible duplicates', 'Contacts and companies that look like the same record twice', openDuplicatesReview),
-        dataRow('fileUp', 'Import from CSV', 'Bring leads, companies, or deals in from a spreadsheet', openCSVImport),
-        dataRow('fileDown', 'Export as CSV', 'One file per record type, for spreadsheets and other tools', openCSVExport),
-        dataRow('fileDown', 'Export everything', 'Download a JSON file of all your data', exportData),
-        dataRow('fileUp', 'Import from export', 'Replace your data with a previously exported file', importData),
-        dataRow('sparkle', 'Load sample data', 'Explore the app with a demo pipeline', loadSample),
-        dataRow('trash', 'Erase all data', 'Clear everything from this account', eraseAll, true)
+        dataRow('merge', 'Проверить возможные дубли', 'Контакты и компании, которые похожи на одну и ту же запись', openDuplicatesReview),
+        dataRow('fileUp', 'Импорт из CSV', 'Загрузить контакты, компании или сделки из таблицы', openCSVImport),
+        dataRow('fileDown', 'Экспорт в CSV', 'По файлу на каждый тип записей — для таблиц и других программ', openCSVExport),
+        dataRow('fileDown', 'Экспорт всех данных', 'Скачать JSON-файл со всеми данными', exportData),
+        dataRow('fileUp', 'Импорт из файла экспорта', 'Заменить данные ранее выгруженным файлом', importData),
+        dataRow('sparkle', 'Загрузить демо-данные', 'Посмотреть приложение на демонстрационной воронке', loadSample),
+        dataRow('trash', 'Удалить все данные', 'Стереть всё в этом аккаунте', eraseAll, true)
       ),
       backupRow
     ),
-    section('Waiting to sync', null,
+    section('Ждут отправки', null,
       el('div.settings-body', {},
-        el('p.settings-note', {}, 'Changes are saved on this device first, so nothing is lost when the connection is - then they go to the server. Anything still on its way shows here.')
+        el('p.settings-note', {}, 'Изменения сначала сохраняются на этом устройстве, поэтому при обрыве связи ничего не теряется, а потом уходят на сервер. Всё, что ещё в пути, показано здесь.')
       ),
       syncRow
     ),
-    section('Cloud backups',
+    section('Резервные копии на сервере',
       (() => {
         const btn = el('button.btn.btn-ghost.btn-sm', {
           html: icon('upload', 14, 2),
-        }, ' Back up now');
+        }, ' Создать копию');
         btn.addEventListener('click', () => backupNow(btn));
         return btn;
       })(),
       el('div.settings-body', {},
-        el('p.settings-note', {}, 'A rolling copy of everything, kept in a backups folder on your own server: insurance against a bad bulk edit or a corrupt write that the 30-day trash can’t cover. The oldest copies prune themselves.'),
-        daysField('backup-days', 'Back up automatically every', 'autoBackupDays', 7,
-          'Checked when you open the app. 0 turns automatic backups off.')
+        el('p.settings-note', {}, 'Регулярная копия всех данных в папке резервных копий на вашем сервере: страховка от неудачной массовой правки или сбоя записи, от которых не спасёт корзина на 30 дней. Старые копии удаляются сами.'),
+        daysField('backup-days', 'Создавать копию автоматически раз в', 'autoBackupDays', 7,
+          'Проверяется при открытии приложения. 0 отключает автоматические копии.')
       ),
       cloudBackups
     ),
-    section('Recently deleted', null, trashSection),
-    section('Account', null, accountRows)
+    section('Корзина', null, trashSection),
+    section('Аккаунт', null, accountRows)
   );
 
   return root;

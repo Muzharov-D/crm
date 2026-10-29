@@ -14,7 +14,7 @@ import { downloadFile, pickFile } from './download.js';
 import { store } from '../lib/store.js';
 import { requiredMark } from './bits.js';
 import { stageInfo } from '../lib/forecast.js';
-import { todayISO } from '../lib/util.js';
+import { todayISO, countLabel, plural } from '../lib/util.js';
 import {
   parseCSV, exportSet, EXPORT_SETS, IMPORT_KINDS, importFieldsFor, autoMap, mapRows,
   unguardFormula,
@@ -37,9 +37,9 @@ const rowCount = (key) => EXPORT_SETS[key].rows(store).length;
 
 export function openCSVExport() {
   const modal = openModal({
-    title: 'Export as CSV',
+    title: 'Экспорт в CSV',
     content: el('div', {},
-      el('p.settings-note.sheet-note', {}, 'One file per record type, ready for a spreadsheet.'),
+      el('p.settings-note.sheet-note', {}, 'Отдельный файл для каждого типа записей, готовый для таблицы.'),
       el('div.settings-list', {}, Object.entries(EXPORT_SETS).map(([key, set]) => {
         const n = rowCount(key);
         return el('button.settings-row', {
@@ -51,13 +51,13 @@ export function openCSVExport() {
             downloadFile(`crm-${key}-${todayISO()}.csv`,
               `﻿${exportSet(key, store, exportContext())}`, 'text/csv');
             modal.close();
-            toast(`${set.label} exported`, { icon: 'fileDown' });
+            toast(`${set.label}: экспорт готов`, { icon: 'fileDown' });
           },
         },
           el('span.row-ic', { html: icon(set.icon, 20, 1.8) }),
           el('div.grow', {},
             el('div.title', {}, set.label),
-            el('div.sub', {}, n ? `${n} row${n === 1 ? '' : 's'}` : 'Nothing to export yet')
+            el('div.sub', {}, n ? countLabel(n, ['строка', 'строки', 'строк']) : 'Пока нечего экспортировать')
           ),
           el('span.row-chev', { html: icon('fileDown', 18) })
         );
@@ -71,9 +71,9 @@ export function openCSVExport() {
 
 export function openCSVImport() {
   const modal = openModal({
-    title: 'Import from CSV',
+    title: 'Импорт из CSV',
     content: el('div', {},
-      el('p.settings-note.sheet-note', {}, 'What does this file hold? Rows are added to your data; nothing is replaced.'),
+      el('p.settings-note.sheet-note', {}, 'Что в этом файле? Строки добавятся к вашим данным, ничего не заменится.'),
       el('div.settings-list', {}, IMPORT_KINDS.map((kind) => el('button.settings-row', {
         type: 'button',
         onclick: () => { modal.close(); pickCSV(kind); },
@@ -81,7 +81,7 @@ export function openCSVImport() {
         el('span.row-ic', { html: icon(kind.icon, 20, 1.8) }),
         el('div.grow', {},
           el('div.title', {}, kind.label),
-          el('div.sub', {}, `Matched on ${kind.matchOn}`)
+          el('div.sub', {}, `Сопоставление по ${kind.matchOn}`)
         ),
         el('span.row-chev', { html: icon('chevR', 18) })
       )))
@@ -96,11 +96,11 @@ function pickCSV(kind) {
     try {
       rows = parseCSV(await file.text());
     } catch {
-      toast('Couldn’t read that file', { icon: 'alert' });
+      toast('Не удалось прочитать файл', { icon: 'alert' });
       return;
     }
     if (rows.length < 2) {
-      toast('That file has no data rows', { icon: 'alert' });
+      toast('В файле нет строк с данными', { icon: 'alert' });
       return;
     }
     openMapping(kind, rows, file.name);
@@ -114,8 +114,9 @@ function openMapping(kind, rows, filename) {
   // against a spreadsheet formula should match its field by name again, and
   // read back to the user as the name they gave it.
   const headers = rows[0].map((h, i) =>
-    unguardFormula(String(h || '').trim()) || `Column ${i + 1}`);
+    unguardFormula(String(h || '').trim()) || `Колонка ${i + 1}`);
   const mapping = autoMap(headers, fields);
+  const nameField = fields.find((f) => f.key === 'name');
   let update = true;
 
   const preview = el('div.csv-preview');
@@ -137,9 +138,9 @@ function openMapping(kind, rows, filename) {
     const skipped = mapped.filter((r) => !String(r.name || '').trim()).length;
 
     clear(summary);
-    summary.append(`${rows.length - 1} row${rows.length === 2 ? '' : 's'} in ${filename}`
-      + (used.length ? ` · ${used.length} column${used.length === 1 ? '' : 's'} mapped` : '')
-      + (mapping.name >= 0 ? '' : ' · pick a Name column to continue'));
+    summary.append(`${countLabel(rows.length - 1, ['строка', 'строки', 'строк'])} в файле ${filename}`
+      + (used.length ? ` · сопоставлено колонок: ${used.length}` : '')
+      + (mapping.name >= 0 ? '' : ` · чтобы продолжить, выберите колонку для поля «${nameField.label}»`));
 
     if (!used.length) return;
     preview.append(el('div.table-wrap.flush', {},
@@ -150,13 +151,15 @@ function openMapping(kind, rows, filename) {
       )
     ));
     if (skipped) {
-      preview.append(el('p.field-hint', {}, `${skipped} of these rows have no name and will be skipped.`));
+      preview.append(el('p.field-hint', {},
+        `${countLabel(skipped, ['строка', 'строки', 'строк'])} ${kind.noName} `
+        + `${plural(skipped, ['будет пропущена', 'будут пропущены', 'будут пропущены'])}.`));
     }
   }
 
   const fieldRows = fields.map((field) => {
     const select = el('select.select', {
-      'aria-label': `Column for ${field.label}`,
+      'aria-label': `Колонка для поля «${field.label}»`,
       onchange: () => {
         mapping[field.key] = Number(select.value);
         renderPreview();
@@ -164,7 +167,7 @@ function openMapping(kind, rows, filename) {
         importBtn.disabled = mapping.name < 0;
       },
     },
-      el('option', { value: '-1', selected: mapping[field.key] < 0 }, 'Not imported'),
+      el('option', { value: '-1', selected: mapping[field.key] < 0 }, 'Не импортировать'),
       headers.map((h, i) => {
         const sample = sampleFor(i);
         return el('option', { value: String(i), selected: mapping[field.key] === i },
@@ -194,10 +197,10 @@ function openMapping(kind, rows, filename) {
       } catch (err) {
         console.error(err);
         importBtn.disabled = false;
-        toast('Import failed. Check your connection', { icon: 'wifiOff' });
+        toast('Импорт не удался. Проверьте подключение', { icon: 'wifiOff' });
       }
     },
-  }, 'Import');
+  }, 'Импортировать');
 
   /* The merge needs a column to match rows against - the email column for
      leads, the name for companies and deals. A file without one left this
@@ -224,27 +227,27 @@ function openMapping(kind, rows, filename) {
     updateToggle.setAttribute('aria-checked', String(on));
     updateToggle.disabled = !canMatch();
     updateSub.textContent = canMatch()
-      ? `Rows matching an existing ${kind.one} by ${kind.matchOn} update it instead of adding a duplicate.`
-      : `Map a column to ${matchField.label} to match on it. Without one, every row is added as a new ${kind.one}.`;
+      ? `Строка, которая совпадает ${kind.existing} по ${kind.matchOn}, обновит эту запись, а не создаст дубль.`
+      : `Чтобы сопоставлять записи, выберите колонку для поля «${matchField.label}». Без неё каждая строка добавится как ${kind.newOne}.`;
   }
 
   const modal = openModal({
-    title: `Import ${kind.label.toLowerCase()}`,
+    title: kind.title,
     wide: true,
     content: el('div.csv-mapping', {},
       summary,
       el('div.csv-fields', {}, fieldRows),
       el('div.switch-row.csv-merge', {},
         el('div.grow.min0', {},
-          el('label.title', { for: 'csv-update' }, 'Update records that already exist'),
+          el('label.title', { for: 'csv-update' }, 'Обновлять существующие записи'),
           updateSub
         ),
         updateToggle
       ),
-      el('h3.csv-preview-title', {}, 'Preview'),
+      el('h3.csv-preview-title', {}, 'Предпросмотр'),
       preview,
       el('div.form-actions', {},
-        el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Cancel'),
+        el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Отмена'),
         el('div.grow'),
         importBtn
       )
@@ -262,20 +265,20 @@ function showSummary(kind, result) {
     el('span', { className: `csv-result-value ${tone}` }, String(value))
   );
   const modal = openModal({
-    title: 'Import complete',
+    title: 'Импорт завершён',
     content: el('div', {},
       el('div.csv-results', {},
-        line(`${kind.label} added`, result.added, 'good'),
-        result.updated > 0 && line(`${kind.label} updated`, result.updated),
-        result.companiesCreated > 0 && line('Companies created', result.companiesCreated),
-        result.skipped > 0 && line('Rows skipped (no name)', result.skipped, 'muted')
+        line(`Добавлено ${kind.many}`, result.added, 'good'),
+        result.updated > 0 && line(`Обновлено ${kind.many}`, result.updated),
+        result.companiesCreated > 0 && line('Создано компаний', result.companiesCreated),
+        result.skipped > 0 && line(`Пропущено строк (${kind.noName})`, result.skipped, 'muted')
       ),
-      el('p.settings-note.mt-sm', {}, 'A snapshot of your data from before this import is in Settings under “Restore previous data”.'),
+      el('p.settings-note.mt-sm', {}, 'Копия данных до этого импорта сохранена: «Настройки» → «Вернуть прежние данные».'),
       el('div.row.row-end.mt-sm', {},
-        el('button.btn.btn-primary', { type: 'button', onclick: () => modal.close() }, 'Done')
+        el('button.btn.btn-primary', { type: 'button', onclick: () => modal.close() }, 'Готово')
       )
     ),
   });
-  toast(`${result.added + result.updated} record${result.added + result.updated === 1 ? '' : 's'} imported`,
+  toast(`Импортировано: ${countLabel(result.added + result.updated, ['запись', 'записи', 'записей'])}`,
     { icon: 'fileUp' });
 }

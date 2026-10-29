@@ -16,10 +16,10 @@ import { ACTIVITY_TYPES } from './statuses.js';
 
 /** Windows the activity log offers, in display order. */
 export const ACTIVITY_WINDOWS = [
-  { value: 'week', label: 'This week' },
-  { value: '30', label: 'Last 30 days' },
-  { value: 'month', label: 'This month' },
-  { value: 'all', label: 'All time' },
+  { value: 'week', label: 'Эта неделя' },
+  { value: '30', label: 'Последние 30 дней' },
+  { value: 'month', label: 'Этот месяц' },
+  { value: 'all', label: 'За всё время' },
 ];
 
 /**

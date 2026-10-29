@@ -11,11 +11,11 @@ import { rateText } from './recurring.js';
 
 /** The fields a template may reference, shown as helper chips in the editor. */
 export const MERGE_FIELDS = [
-  { key: 'firstName', token: '{{firstName}}', label: 'First name' },
-  { key: 'name', token: '{{name}}', label: 'Full name' },
-  { key: 'company', token: '{{company}}', label: 'Company' },
-  { key: 'dealName', token: '{{dealName}}', label: 'Deal name' },
-  { key: 'dealValue', token: '{{dealValue}}', label: 'Deal value' },
+  { key: 'firstName', token: '{{firstName}}', label: 'Имя' },
+  { key: 'name', token: '{{name}}', label: 'Имя и фамилия' },
+  { key: 'company', token: '{{company}}', label: 'Компания' },
+  { key: 'dealName', token: '{{dealName}}', label: 'Название сделки' },
+  { key: 'dealValue', token: '{{dealValue}}', label: 'Сумма сделки' },
 ];
 
 /**
@@ -29,7 +29,7 @@ export function fillTemplate(text, ctx = {}) {
 }
 
 /** Merge-field values for a record combination. Any part may be missing. */
-export function templateContext({ contact = null, company = null, deal = null, currency = 'USD' } = {}) {
+export function templateContext({ contact = null, company = null, deal = null, currency = 'RUB' } = {}) {
   return {
     firstName: String(contact?.name || '').trim().split(/\s+/)[0] || '',
     name: contact?.name || '',

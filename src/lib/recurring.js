@@ -14,13 +14,13 @@
  * one, and the reverse would be a cycle.
  */
 
-import { monthKey, shiftMonthKey, round2, formatMoney, compactMoney } from './util.js';
+import { monthKey, shiftMonthKey, round2, formatMoney, compactMoney, countLabel } from './util.js';
 
 /** How a deal bills. `one-time` is the default and the historical behaviour. */
 export const BILLING_MODES = [
-  { value: 'one-time', label: 'One-time', per: '', valueLabel: 'Value' },
-  { value: 'monthly', label: 'Monthly', per: '/mo', valueLabel: 'Monthly value' },
-  { value: 'annual', label: 'Annual', per: '/yr', valueLabel: 'Annual value' },
+  { value: 'one-time', label: 'Разово', per: '', valueLabel: 'Сумма' },
+  { value: 'monthly', label: 'Ежемесячно', per: ' в месяц', valueLabel: 'Сумма в месяц' },
+  { value: 'annual', label: 'Ежегодно', per: ' в год', valueLabel: 'Сумма в год' },
 ];
 
 const MODE_IDS = new Set(BILLING_MODES.map((m) => m.value));
@@ -178,30 +178,29 @@ export function billingInfo(deal) {
   return BILLING_MODES.find((m) => m.value === id) || BILLING_MODES[0];
 }
 
-/** "Monthly", "Annual", "One-time" - the label for a badge or a CSV cell. */
+/** "Ежемесячно", "Ежегодно", "Разово" - the label for a badge or a CSV cell. */
 export function billingLabel(deal) {
   return billingInfo(deal).label;
 }
 
-/** "$2,000/mo", "$24,000/yr", or plain "$5,000" for one-time. */
-export function rateText(deal, currency = 'USD', { compact = false } = {}) {
+/** "2 000 ₽ в месяц", "24 000 ₽ в год", or plain "5 000 ₽" for one-time. */
+export function rateText(deal, currency = 'RUB', { compact = false } = {}) {
   const money = compact ? compactMoney : formatMoney;
   return `${money(amountOf(deal), currency)}${billingInfo(deal).per}`;
 }
 
-/** "1 month" / "12 months" for a term, or null when there isn't one. */
+/** "1 месяц" / "3 месяца" / "12 месяцев" for a term, or null when there isn't one. */
 export function termText(deal) {
   if (!isRecurring(deal)) return null;
-  const term = termOf(deal);
-  return `${term} month${term === 1 ? '' : 's'}`;
+  return countLabel(termOf(deal), ['месяц', 'месяца', 'месяцев']);
 }
 
 /**
- * What the whole contract comes to: "$24,000 over 12 months". Null for a
+ * What the whole contract comes to: "24 000 ₽ за 12 месяцев". Null for a
  * one-time deal, whose value already says it.
  */
-export function contractText(deal, currency = 'USD', { compact = false } = {}) {
+export function contractText(deal, currency = 'RUB', { compact = false } = {}) {
   if (!isRecurring(deal)) return null;
   const money = compact ? compactMoney : formatMoney;
-  return `${money(contractValue(deal), currency)} over ${termText(deal)}`;
+  return `${money(contractValue(deal), currency)} за ${termText(deal)}`;
 }

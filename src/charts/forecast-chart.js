@@ -17,7 +17,9 @@
  */
 
 import { el, clear } from '../ui/dom.js';
-import { compactMoney, formatMonth, formatMoney } from '../lib/util.js';
+import { compactMoney, formatMonth, formatMoney, countLabel } from '../lib/util.js';
+
+const DEALS = ['сделка', 'сделки', 'сделок'];
 
 const PLOT_H = 170;
 /* The cap label sits on top of the tallest stack inside the fixed-height
@@ -38,11 +40,11 @@ export function forecastChart(rows, currency, { goal = 0 } = {}) {
     const upside = Math.max(0, r.best - r.weighted);
     tooltip.append(
       el('div.tip-title', {}, formatMonth(r.key)),
-      tipRow('weighted', 'Weighted', formatMoney(r.weighted, currency)),
-      upside > 0 && tipRow('upside', 'Upside', formatMoney(upside, currency)) || '',
-      r.won > 0 && tipRow('won', 'Already won', formatMoney(r.won, currency)) || '',
+      tipRow('weighted', 'Взвешенно', formatMoney(r.weighted, currency)),
+      upside > 0 && tipRow('upside', 'Потенциал', formatMoney(upside, currency)) || '',
+      r.won > 0 && tipRow('won', 'Уже выиграно', formatMoney(r.won, currency)) || '',
       el('div.tip-sub', {},
-        `Best case ${formatMoney(r.best, currency)} · ${r.count} deal${r.count === 1 ? '' : 's'}`)
+        `Максимум ${formatMoney(r.best, currency)} · ${countLabel(r.count, DEALS)}`)
     );
     tooltip.hidden = false;
     // Clamp the tip inside the chart so edge columns don't overflow it.
@@ -85,10 +87,10 @@ export function forecastChart(rows, currency, { goal = 0 } = {}) {
 
     const col = el('button.chart-col', {
       type: 'button',
-      'aria-label': `${formatMonth(r.key)}: ${formatMoney(r.weighted, currency)} weighted, `
-        + `${formatMoney(r.best, currency)} best case`
-        + (r.won ? `, ${formatMoney(r.won, currency)} already won` : '')
-        + `, ${r.count} deal${r.count === 1 ? '' : 's'}`,
+      'aria-label': `${formatMonth(r.key)}: взвешенно ${formatMoney(r.weighted, currency)}, `
+        + `максимум ${formatMoney(r.best, currency)}`
+        + (r.won ? `, уже выиграно ${formatMoney(r.won, currency)}` : '')
+        + `, ${countLabel(r.count, DEALS)}`,
     },
       el('div.col-plot', { style: { height: `${PLOT_H}px` } },
         hasBar && el('div.col-stack', {},
@@ -109,16 +111,16 @@ export function forecastChart(rows, currency, { goal = 0 } = {}) {
   const goalLine = goal > 0 && el('div.chart-goal', {
     style: { top: `${PLOT_H - px(goal)}px` },
     role: 'img',
-    'aria-label': `Monthly goal ${formatMoney(goal, currency)}`,
-  }, el('span.chart-goal-label', {}, `Goal ${compactMoney(goal, currency)}`));
+    'aria-label': `План на месяц ${formatMoney(goal, currency)}`,
+  }, el('span.chart-goal-label', {}, `План ${compactMoney(goal, currency)}`));
 
   chart.append(
     el('div.chart-legend', {},
-      legendKey('weighted', 'Weighted'),
-      legendKey('upside', 'Upside to best case'),
-      rows.some((r) => r.won > 0) && legendKey('won', 'Already won'),
+      legendKey('weighted', 'Взвешенно'),
+      legendKey('upside', 'Потенциал до максимума'),
+      rows.some((r) => r.won > 0) && legendKey('won', 'Уже выиграно'),
       goal > 0 && el('span.legend-key', {},
-        el('span.legend-goal', { 'aria-hidden': 'true' }), 'Monthly goal')
+        el('span.legend-goal', { 'aria-hidden': 'true' }), 'План на месяц')
     ),
     el('div.chart-plot-row', {}, goalLine, cols),
     tooltip

@@ -23,7 +23,7 @@ export function pageHead(title, ...actions) {
       el('button.icon-btn.page-search', {
         type: 'button',
         html: icon('search', 20, 2),
-        'aria-label': 'Search everything',
+        'aria-label': 'Поиск по всему',
         'aria-haspopup': 'dialog',
         onclick: () => document.dispatchEvent(new Event('crm:search')),
       }),
@@ -41,7 +41,7 @@ export function pageHead(title, ...actions) {
  * announces it, and "Name star" is not the name of a field.
  */
 export function requiredMark() {
-  return el('span.field-required', { 'aria-hidden': 'true', title: 'Required' }, ' *');
+  return el('span.field-required', { 'aria-hidden': 'true', title: 'Обязательное поле' }, ' *');
 }
 
 export function emptyState({ icon: name = 'inbox', title, message, action = null }) {
@@ -99,7 +99,7 @@ export function stageRampStyle(stageId, stages = store.stages()) {
 /** "contract-sent" → "Contract sent", for stages history outlived. */
 function prettyStageId(stageId) {
   const words = String(stageId || '').replace(/[-_]+/g, ' ').trim();
-  return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Unknown stage';
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Неизвестный этап';
 }
 
 /**
@@ -180,7 +180,7 @@ export function activityRow(activity, { context = {}, onEdit = null } = {}) {
       )
     ),
     onEdit && el('button.icon-btn.row-edit', {
-      html: icon('pencil', 15, 2), 'aria-label': `Edit activity: ${activity.summary}`,
+      html: icon('pencil', 15, 2), 'aria-label': `Изменить запись: ${activity.summary}`,
       dataset: { focusKey: `activity-edit-${activity.id}` },
       onclick: () => onEdit(activity),
     })
@@ -197,9 +197,9 @@ export function activityRow(activity, { context = {}, onEdit = null } = {}) {
  * follow-up can legitimately be pulled forward as well as pushed back.
  */
 export function openSnoozeSheet(task, {
-  title = 'Snooze follow-up',
-  verb = 'Snoozed',
-  action = 'Snooze',
+  title = 'Отложить задачу',
+  verb = 'Отложено',
+  action = 'Отложить',
   earliest = todayISO(),
 } = {}) {
   const today = todayISO();
@@ -210,15 +210,15 @@ export function openSnoozeSheet(task, {
     try {
       await store.updateTask(task.id, { due });
     } catch {
-      toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+      toast('Не удалось сохранить. Проверьте связь', { icon: 'wifiOff' });
       return;
     }
-    toast(`${verb} to ${formatDate(due)}`, {
+    toast(`${verb} на ${formatDate(due)}`, {
       icon: 'snooze',
       action: {
-        label: 'Undo',
+        label: 'Отменить',
         onClick: () => store.updateTask(task.id, prev)
-          .catch(() => toast('Couldn’t undo. Check your connection', { icon: 'wifiOff' })),
+          .catch(() => toast('Не удалось отменить. Проверьте связь', { icon: 'wifiOff' })),
       },
     });
   };
@@ -242,7 +242,7 @@ export function openSnoozeSheet(task, {
   // covers a field cleared to empty. reportValidity() below says which.
   const dateInput = el('input.input', {
     type: 'date', value: addDays(today, 1), min: earliest || null, required: true,
-    'aria-label': `${action} until`,
+    'aria-label': `${action} на дату`,
   });
 
   const modal = openModal({
@@ -250,8 +250,8 @@ export function openSnoozeSheet(task, {
     content: el('div', {},
       el('p.settings-note.sheet-note', {}, task.title),
       el('div.settings-list', {},
-        option('Tomorrow', addDays(today, 1)),
-        option('Next week', addDays(today, 7))
+        option('Завтра', addDays(today, 1)),
+        option('Через неделю', addDays(today, 7))
       ),
       el('div.settings-body', {},
         el('div.snooze-pick', {},
@@ -270,9 +270,9 @@ export function openSnoozeSheet(task, {
 /** The calendar's move: any day, forwards or back, with one Undo. */
 export function openRescheduleSheet(task) {
   return openSnoozeSheet(task, {
-    title: 'Move follow-up',
-    verb: 'Moved',
-    action: 'Move',
+    title: 'Перенести задачу',
+    verb: 'Перенесено',
+    action: 'Перенести',
     // No floor: on a calendar, pulling something forward is as ordinary as
     // pushing it back, and the day the user aimed at is the day they meant.
     earliest: '',
@@ -284,7 +284,7 @@ export function taskRow(task, { context = {}, onEdit = null } = {}) {
   const box = el('button.task-check', {
     role: 'checkbox',
     'aria-checked': String(task.done),
-    'aria-label': `Done: ${task.title}`,
+    'aria-label': `Выполнено: ${task.title}`,
     // Keyed by the follow-up, not its title. Completing a repeating one
     // mints the next occurrence under the same title, and the rebuilt page
     // put the keyboard on the first match in document order - the new one,
@@ -301,15 +301,15 @@ export function taskRow(task, { context = {}, onEdit = null } = {}) {
         // record with nothing booked, which is the moment to fix that.
         if (saved?.done && saved.spawnedId) {
           const next = store.tasks.find((t) => t.id === saved.spawnedId);
-          if (next) toast(`Done · next one ${formatDate(next.due)}`, { icon: 'repeat' });
+          if (next) toast(`Выполнено · следующая ${formatDate(next.due)}`, { icon: 'repeat' });
         } else if (saved?.done) {
           maybeNudgeNextStep({
             contactId: saved.contactId, dealId: saved.dealId,
-            title: saved.title, lead: 'Done',
+            title: saved.title, lead: 'Выполнено',
           });
         }
       } catch {
-        toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+        toast('Не удалось сохранить. Проверьте связь', { icon: 'wifiOff' });
       }
     },
   });
@@ -332,13 +332,13 @@ export function taskRow(task, { context = {}, onEdit = null } = {}) {
     ),
     task.repeat && el('span.repeat-pill', { title: repeatLabel(task.repeat) },
       el('span', { html: icon('repeat', 12, 2.2), 'aria-hidden': 'true' }),
-      el('span.sr-only', {}, `Repeats: ${repeatLabel(task.repeat)}`)
+      el('span.sr-only', {}, `Повтор: ${repeatLabel(task.repeat)}`)
     ),
     !task.done && duePill(task.due, task.dueTime),
     emailContact?.email && template && el('button.icon-btn.row-edit', {
       html: icon('mail', 15, 2),
-      'aria-label': `Write “${template.name}” to ${emailContact.name}`,
-      title: `Write “${template.name}”`,
+      'aria-label': `Написать письмо «${template.name}» для ${emailContact.name}`,
+      title: `Написать письмо «${template.name}»`,
       'aria-haspopup': 'dialog',
       dataset: { focusKey: `task-email-${task.id}` },
       onclick: async () => {
@@ -351,13 +351,13 @@ export function taskRow(task, { context = {}, onEdit = null } = {}) {
       },
     }),
     snoozable && el('button.icon-btn.row-edit', {
-      html: icon('snooze', 15, 2), 'aria-label': `Snooze: ${task.title}`,
+      html: icon('snooze', 15, 2), 'aria-label': `Отложить: ${task.title}`,
       'aria-haspopup': 'dialog',
       dataset: { focusKey: `task-snooze-${task.id}` },
       onclick: () => openSnoozeSheet(task),
     }),
     onEdit && el('button.icon-btn.row-edit', {
-      html: icon('pencil', 15, 2), 'aria-label': `Edit follow-up: ${task.title}`,
+      html: icon('pencil', 15, 2), 'aria-label': `Изменить задачу: ${task.title}`,
       dataset: { focusKey: `task-edit-${task.id}` },
       onclick: () => onEdit(task),
     })
@@ -395,9 +395,9 @@ export function deletedToast(message, entry) {
   toast(message, {
     icon: 'trash',
     action: entry && {
-      label: 'Undo',
+      label: 'Отменить',
       onClick: () => store.restoreTrash(entry.id)
-        .catch(() => toast('Couldn’t restore. Check your connection', { icon: 'wifiOff' })),
+        .catch(() => toast('Не удалось восстановить. Проверьте связь', { icon: 'wifiOff' })),
     },
   });
 }

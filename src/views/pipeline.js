@@ -7,6 +7,7 @@ import {
 } from '../lib/forecast.js';
 import {
   compactMoney, formatDate, dueLabel, timeAgo, todayISO, fuzzyIncludes, sinceLabel,
+  countLabel, plural,
 } from '../lib/util.js';
 import {
   contractValue, isRecurring, rateText, contractText, termText, billingLabel,
@@ -53,11 +54,11 @@ async function moveDealTo(deal, stage) {
   try {
     await store.moveDeal(deal.id, stage);
   } catch {
-    toast('Couldn’t save the move. Check your connection', { icon: 'wifiOff' });
+    toast('Не удалось перенести сделку. Проверьте подключение', { icon: 'wifiOff' });
     return;
   }
   const undo = () => store.moveDeal(deal.id, from)
-    .catch(() => toast('Couldn’t undo. Check your connection', { icon: 'wifiOff' }));
+    .catch(() => toast('Не удалось отменить. Проверьте подключение', { icon: 'wifiOff' }));
   if (stage !== 'won' && stage !== 'lost') {
     // A stage change is a promise of momentum; if nothing is booked to
     // keep it, offer the follow-up while the move is still in hand. A
@@ -69,22 +70,22 @@ async function moveDealTo(deal, stage) {
     if (maybeOfferPlaybook(moved, stage)) return;
     if (maybeNudgeNextStep({
       dealId: moved.id, contactId: moved.contactId,
-      lead: `Now in ${label}`,
+      lead: `Теперь на этапе «${label}»`,
     })) return;
     // Neither offer had anything to say - the deal already has its next
     // step booked, or nudges are off - and the move went through in
     // silence. Every other change in the app says it landed and hands
     // back a way out; a drag across a board is the easiest of them all to
     // do by accident, and this one had none.
-    toast(`Moved to ${label}`, {
+    toast(`Сделка перенесена на этап «${label}»`, {
       icon: 'pipeline',
-      action: { label: 'Undo', onClick: undo },
+      action: { label: 'Отменить', onClick: undo },
     });
     return;
   }
   const done = () => (stage === 'won'
-    ? toast(`${deal.name} won`, { icon: 'trophy', action: { label: 'Undo', onClick: undo } })
-    : toast('Marked as lost', { icon: 'circleX', action: { label: 'Undo', onClick: undo } }));
+    ? toast(`Сделка «${deal.name}» выиграна`, { icon: 'trophy', action: { label: 'Отменить', onClick: undo } })
+    : toast('Сделка проиграна', { icon: 'circleX', action: { label: 'Отменить', onClick: undo } }));
   // Ask why while it is still fresh; the Undo toast waits its turn so the
   // two never fight over the bottom of the screen - and it is the
   // confirmation for this whole move, so the sheet doesn't raise its own.
@@ -94,7 +95,7 @@ async function moveDealTo(deal, stage) {
 /** Keyboard/touch alternative to drag & drop: pick the stage from a sheet. */
 function openMoveSheet(deal) {
   const modal = openModal({
-    title: 'Move deal',
+    title: 'Перенос сделки',
     content: el('div.settings-list', {},
       store.stages().map((s) => el('button.settings-row', {
         type: 'button',
@@ -220,47 +221,47 @@ function dealsView(params) {
 
   function bulkActions() {
     const ids = () => selection.ids();
-    const fail = () => toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+    const fail = () => toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' });
     return [
       {
-        icon: 'pipeline', label: 'Stage',
-        onClick: () => pickSheet('Move to stage',
+        icon: 'pipeline', label: 'Этап',
+        onClick: () => pickSheet('Перенести на этап',
           store.stages().map((s) => ({ value: s.id, node: stageBadge(s.id) })),
           async (v) => {
             try {
               const n = await store.bulkMoveDeals(ids(), v);
               selection.clear();
-              bulkToast(n, 'Stage set', 'pipeline');
+              bulkToast(n, 'Этап изменён', 'pipeline');
             } catch { fail(); }
           }),
       },
       {
-        icon: 'tag', label: 'Tag',
+        icon: 'tag', label: 'Метка',
         onClick: () => openBulkTagSheet(async (tag) => {
           try {
             const n = await store.bulkTag('deals', ids(), tag);
             selection.clear();
-            bulkToast(n, `Tagged “${tag}”`, 'tag');
+            bulkToast(n, `Метка «${tag}» добавлена`, 'tag');
           } catch { fail(); }
         }),
       },
       {
-        icon: 'fileDown', label: 'Export',
+        icon: 'fileDown', label: 'Экспорт',
         onClick: () => {
           const records = store.deals.filter((d) => selection.has(d.id));
           downloadFile(`crm-deals-selection-${todayISO()}.csv`,
             `﻿${exportRecords('deals', records, exportContext())}`, 'text/csv');
-          toast(`${records.length} deal${records.length === 1 ? '' : 's'} exported`, { icon: 'fileDown' });
+          toast(`${countLabel(records.length, ['сделка', 'сделки', 'сделок'])} ${plural(records.length, ['экспортирована', 'экспортированы', 'экспортировано'])}`, { icon: 'fileDown' });
         },
       },
       {
-        icon: 'trash', label: 'Delete', danger: true,
+        icon: 'trash', label: 'Удалить', danger: true,
         onClick: async () => {
-          if (!await confirmBulkDelete(selection.size, selection.size === 1 ? 'deal' : 'deals')) return;
+          if (!await confirmBulkDelete(selection.size, plural(selection.size, ['сделку', 'сделки', 'сделок']))) return;
           try {
             const entries = await store.bulkDelete('deals', ids());
             selection.clear();
-            toast(`${entries.length} deal${entries.length === 1 ? '' : 's'} deleted`, { icon: 'trash' });
+            toast(`${countLabel(entries.length, ['сделка', 'сделки', 'сделок'])} ${plural(entries.length, ['удалена', 'удалены', 'удалено'])}`, { icon: 'trash' });
           } catch { fail(); }
         },
       },
@@ -285,24 +286,24 @@ function dealsView(params) {
     clear(controls);
     const stages = store.stages();
     const chips = [
-      { value: 'open', label: 'Open' },
-      { value: 'all', label: 'All' },
+      { value: 'open', label: 'Открытые' },
+      { value: 'all', label: 'Все' },
       ...stages.map((s) => ({ value: s.id, label: s.label })),
     ];
 
     const search = searchBox({
-      placeholder: 'Search deals, companies, notes…',
+      placeholder: 'Поиск по сделкам, компаниям, заметкам…',
       value: query,
       oninput: (e) => { query = e.target.value.trim(); render(); },
     });
 
     const windowSelect = el('select.select', {
-      'aria-label': 'Filter by expected close date',
+      'aria-label': 'Фильтр по дате закрытия',
       onchange: (e) => { closeWindow = e.target.value; render(); },
     }, CLOSE_WINDOWS.map((w) =>
       el('option', { value: w.value, selected: w.value === closeWindow }, w.label)));
 
-    const filters = el('div.filter-row', { role: 'group', 'aria-label': 'Filter deals by stage' },
+    const filters = el('div.filter-row', { role: 'group', 'aria-label': 'Фильтр сделок по этапу' },
       chips.map((c) => el('button.filter-chip', {
         type: 'button',
         className: `filter-chip${stageFilter === c.value ? ' active' : ''}`,
@@ -336,7 +337,7 @@ function dealsView(params) {
     const isCollapsed = (s) => stageFilter === 'open'
       && isTerminalStage(s.id) && !expanded.has(s.id);
 
-    const board = el('div.board', { role: 'list', 'aria-label': 'Pipeline stages' });
+    const board = el('div.board', { role: 'list', 'aria-label': 'Этапы воронки' });
     board.style.gridTemplateColumns = shown
       .map((s) => (isCollapsed(s) ? 'minmax(124px, 0.4fr)' : 'minmax(248px, 1fr)')).join(' ');
 
@@ -350,7 +351,7 @@ function dealsView(params) {
       const col = el('section.board-col', {
         role: 'listitem',
         dataset: { stage: s.id },
-        'aria-label': `${s.label}: ${deals.length} deal${deals.length === 1 ? '' : 's'}`,
+        'aria-label': `${s.label}: ${countLabel(deals.length, ['сделка', 'сделки', 'сделок'])}`,
       });
 
       // Folding a terminal column swaps one control for the other, and the
@@ -373,7 +374,7 @@ function dealsView(params) {
             el('span.row-chev', { html: icon('chevD', 16, 2.2) })
           ),
           el('div.col-collapsed-sum', {},
-            `${deals.length} deal${deals.length === 1 ? '' : 's'}`,
+            countLabel(deals.length, ['сделка', 'сделки', 'сделок']),
             total > 0 && el('span.col-total', {}, money)
           )
         ));
@@ -381,7 +382,7 @@ function dealsView(params) {
         const cards = el('div.col-cards');
         for (const d of deals) cards.append(dealCard(d));
         if (!deals.length) {
-          cards.append(el('div.col-empty', {}, filtersActive() ? 'No matches' : 'No deals'));
+          cards.append(el('div.col-empty', {}, filtersActive() ? 'Ничего не найдено' : 'Нет сделок'));
         }
         col.append(
           el('header.col-head', {},
@@ -391,7 +392,7 @@ function dealsView(params) {
             total > 0 && el('span.col-total', {}, money),
             stageFilter === 'open' && isTerminalStage(s.id) && el('button.icon-btn.col-fold', {
               html: icon('chevU', 15, 2.2),
-              'aria-label': `Collapse ${s.label}`,
+              'aria-label': `Свернуть «${s.label}»`,
               'aria-expanded': 'true',
               dataset: { focusKey: foldKey },
               onclick: refresh(() => { expanded.delete(s.id); }),
@@ -438,25 +439,25 @@ function dealsView(params) {
         // alone is a different deal.
         el('div.deal-card-value', {}, rateText(d, store.settings.currency),
           isRecurring(d) && el('span.deal-card-term', {},
-            ` · ${compactMoney(contractValue(d), store.settings.currency)} total`)),
+            ` · всего ${compactMoney(contractValue(d), store.settings.currency)}`)),
         (company || contact) && el('div.deal-card-sub', {}, company?.name || contact?.name),
         el('div.deal-card-pills', {},
           due && el('span.due-pill', { dataset: { status: due.status === 'overdue' ? 'overdue' : 'later' } },
             due.status === 'overdue' && el('span', { html: icon('alert', 12, 2.2) }),
-            due.status === 'overdue' ? `Close date ${due.text}`
-              : due.status === 'later' ? `Close ${due.text}` : `Close ${due.text.toLowerCase()}`),
+            due.status === 'overdue' ? `Закрытие ${due.text}`
+              : due.status === 'later' ? `Закрытие ${due.text}` : `Закрытие ${due.text.toLowerCase()}`),
           // Only once it crosses the threshold: an age badge on every card
           // would be noise, and "stuck" is the signal worth surfacing.
           stalled && el('span.age-pill', {
             dataset: { tone: 'stalled' },
-            title: `No stage change since ${formatDate(todayISO(new Date(stageEnteredAt(d))), { year: 'always' })}`,
+            title: `Этап не менялся с ${formatDate(todayISO(new Date(stageEnteredAt(d))), { year: 'always' })}`,
           },
             el('span', { html: icon('clock', 12, 2.2), 'aria-hidden': 'true' }),
-            `${daysInStage(d)}d in stage`),
+            `${daysInStage(d)} дн. на этапе`),
           // The board should explain the forecast: a card whose weight is
           // the founder's own call says so.
           confidence && el('span.age-pill.conf-pill', {
-            title: 'Forecast confidence set on this deal, overriding the stage weight',
+            title: 'Уверенность задана вручную и заменяет вероятность этапа',
           },
             el('span', { html: icon('target', 12, 2.2), 'aria-hidden': 'true' }),
             confidence)
@@ -464,7 +465,7 @@ function dealsView(params) {
       ),
       el('button.icon-btn.deal-card-move', {
         html: icon('more', 16, 2),
-        'aria-label': `Move ${d.name} to another stage`,
+        'aria-label': `Перенести «${d.name}» на другой этап`,
         'aria-haspopup': 'dialog',
         onclick: () => openMoveSheet(d),
       })
@@ -513,13 +514,13 @@ function dealsView(params) {
     if (!rows.length && !filtersActive()) {
       return emptyState({
         icon: 'pipeline',
-        title: 'No open deals',
-        message: 'Every deal on your board is won or lost. Start the next one, or show all to look back over what closed.',
+        title: 'Нет открытых сделок',
+        message: 'Все сделки выиграны или проиграны. Заведите новую или покажите все, чтобы посмотреть закрытые.',
         action: el('div.empty-actions', {},
-          el('button.btn.btn-primary', { onclick: () => openDealForm() }, 'New deal'),
+          el('button.btn.btn-primary', { onclick: () => openDealForm() }, 'Новая сделка'),
           el('button.btn.btn-ghost', {
             onclick: refreshControls(() => { stageFilter = 'all'; }),
-          }, 'Show all deals')
+          }, 'Показать все сделки')
         ),
       });
     }
@@ -527,18 +528,18 @@ function dealsView(params) {
     if (!rows.length) {
       const fieldsOn = activeFields();
       return emptyState({
-        icon: 'search', title: 'No deals match',
+        icon: 'search', title: 'Подходящих сделок нет',
         message: fieldsOn.length
-          ? `Nothing matches ${fieldsOn.map((f) => fieldFilterLabel(f.field, f.value)).join(' and ')} with the filters you have on.`
-          : 'Try a different search, stage, or close-date window.',
-        action: el('button.btn.btn-ghost', { onclick: clearFilters }, 'Clear filters'),
+          ? `С условием ${fieldsOn.map((f) => `«${fieldFilterLabel(f.field, f.value)}»`).join(' и ')} и остальными фильтрами ничего не найдено.`
+          : 'Измените запрос, этап или период закрытия.',
+        action: el('button.btn.btn-ghost', { onclick: clearFilters }, 'Сбросить фильтры'),
       });
     }
 
     const total = rows.reduce((sum, d) => sum + contractValue(d), 0);
 
     const head = el('tr', {}, el('th.col-select', { scope: 'col' },
-      el('span.sr-only', {}, 'Select')), COLUMNS.map((c) => {
+      el('span.sr-only', {}, 'Выбор')), COLUMNS.map((c) => {
       const active = sort.key === c.key;
       return el(`th${c.num ? '.num' : ''}${c.cls ? `.${c.cls}` : ''}`, {
         scope: 'col',
@@ -564,7 +565,7 @@ function dealsView(params) {
         )
       );
     }).concat(el('th.col-menu', { scope: 'col' },
-      el('span.sr-only', {}, 'Actions'))));
+      el('span.sr-only', {}, 'Действия'))));
 
     const table = el('table.data-table.deal-table', {},
       el('thead', {}, head),
@@ -573,9 +574,9 @@ function dealsView(params) {
 
     return el('div.card', {},
       el('div.list-summary', {},
-        el('span', {}, `${rows.length} deal${rows.length === 1 ? '' : 's'}`),
+        el('span', {}, countLabel(rows.length, ['сделка', 'сделки', 'сделок'])),
         el('span.list-summary-value', {}, moneyText(total)),
-        filtersActive() && el('button.btn-inline', { onclick: clearFilters }, 'Clear filters')
+        filtersActive() && el('button.btn-inline', { onclick: clearFilters }, 'Сбросить фильтры')
       ),
       el('div.table-wrap', {}, table)
     );
@@ -591,7 +592,7 @@ function dealsView(params) {
       el('th', { scope: 'row' },
         el('a.deal-tr-name', { href }, d.name),
         isStalled(d, store.settings.staleDays) && el('span.age-pill', { dataset: { tone: 'stalled' } },
-          `${daysInStage(d)}d in stage`)
+          `${daysInStage(d)} дн. на этапе`)
       ),
       el('td.col-link', {}, link?.name || '–'),
       el('td.col-stage', {}, stageBadge(d.stage, stages)),
@@ -607,7 +608,7 @@ function dealsView(params) {
       el('td.col-menu', {},
         el('button.icon-btn', {
           html: icon('more', 16, 2),
-          'aria-label': `Move ${d.name} to another stage`,
+          'aria-label': `Перенести «${d.name}» на другой этап`,
           'aria-haspopup': 'dialog',
           onclick: (e) => { e.stopPropagation(); openMoveSheet(d); },
         }))
@@ -635,9 +636,9 @@ function dealsView(params) {
       viewRow.hidden = true;
       body.append(emptyState({
         icon: 'pipeline',
-        title: 'Your pipeline is empty',
-        message: 'A deal is one opportunity with one buyer. Add the conversations you’re having right now and drag them through the stages as they progress.',
-        action: el('button.btn.btn-primary', { onclick: () => openDealForm() }, 'Add your first deal'),
+        title: 'В воронке пока пусто',
+        message: 'Сделка — это одна продажа одному покупателю. Добавьте переговоры, которые идут сейчас, и перетаскивайте их по этапам по мере продвижения.',
+        action: el('button.btn.btn-primary', { onclick: () => openDealForm() }, 'Добавить первую сделку'),
       }));
       return;
     }
@@ -653,8 +654,8 @@ function dealsView(params) {
     board.scrollLeft = prevScroll;
   }
 
-  const viewToggle = el('div.seg-group.view-toggle', { role: 'group', 'aria-label': 'Deal layout' },
-    [['board', 'Board', 'pipeline'], ['list', 'List', 'listChecks']].map(([value, label, ic]) =>
+  const viewToggle = el('div.seg-group.view-toggle', { role: 'group', 'aria-label': 'Вид сделок' },
+    [['board', 'Доска', 'pipeline'], ['list', 'Список', 'listChecks']].map(([value, label, ic]) =>
       el('button.seg', {
         type: 'button',
         className: `seg${mode === value ? ' active' : ''}`,
@@ -705,14 +706,14 @@ function dealsView(params) {
   store.addEventListener('change', renderOnChange);
 
   root.append(
-    pageHead('Pipeline',
+    pageHead('Воронка',
       viewToggle,
       // label-hide-sm: with the view toggle also in this header, the label
       // is what pushes "Pipeline" into an ellipsis on phone widths.
       el('button.btn.btn-primary.label-hide-sm', {
         html: icon('plus', 16, 2.2),
         onclick: () => openDealForm(),
-      }, ' New deal')),
+      }, ' Новая сделка')),
     viewRow,
     controls,
     body,
@@ -725,7 +726,7 @@ function dealsView(params) {
 /* ---------- deal detail ---------- */
 
 const DAY = 86400000;
-const daysText = (n) => `${n} day${n === 1 ? '' : 's'}`;
+const daysText = (n) => countLabel(n, ['день', 'дня', 'дней']);
 
 function stageLabelOf(stageId, stages) {
   return stages.find((s) => s.id === stageId)?.label ?? stageId;
@@ -735,7 +736,7 @@ function stageLabelOf(stageId, stages) {
 function timeInStageText(deal, stages) {
   const days = daysInStage(deal);
   const label = stageLabelOf(deal.stage, stages);
-  return days === 0 ? `Entered ${label} today` : `In ${label} for ${daysText(days)}`;
+  return days === 0 ? `На этапе «${label}» с сегодняшнего дня` : `На этапе «${label}» ${daysText(days)}`;
 }
 
 /**
@@ -753,14 +754,14 @@ function personRow(deal, contactId) {
     el('div.grow.min0', {},
       el('div.person-name', {}, contact.name),
       el('div.person-sub', {},
-        [contact.title, primary ? 'Primary contact' : null].filter(Boolean).join(' · ')
-        || 'No title yet')
+        [contact.title, primary ? 'Основной контакт' : null].filter(Boolean).join(' · ')
+        || 'Должность не указана')
     ),
     role && el('span.role-badge', {
       dataset: { role },
-      title: role === DECIDER_ROLE ? 'Signs the deal off' : null,
+      title: role === DECIDER_ROLE ? 'Подписывает сделку' : null,
     }, roleLabel(role)),
-    el('span.mini-note', {}, lastAt ? sinceLabel(lastAt).text : 'no contact'),
+    el('span.mini-note', {}, lastAt ? sinceLabel(lastAt).text : 'не общались'),
     el('span.row-chev', { html: icon('chevR', 18) })
   );
 }
@@ -774,7 +775,7 @@ function dealTouchChip(deal) {
   const cold = coldDays > 0 && days >= coldDays;
   return el('span.chip.static', { dataset: cold ? { tone: 'stalled' } : {} },
     el('span', { html: icon('video', 13, 2) }),
-    lastAt ? `Last touch ${text}` : 'No activity logged'
+    lastAt ? `Последнее касание: ${text}` : 'В истории пока пусто'
   );
 }
 
@@ -790,7 +791,7 @@ function stageTimeline(deal, stages, now = Date.now()) {
       el('span.stage-timeline-date', {},
         formatDate(todayISO(new Date(entry.at)), { year: 'always' })),
       el('span.stage-timeline-days', {},
-        current && isOpen(deal) ? `${daysText(days)} · now` : daysText(days))
+        current && isOpen(deal) ? `${daysText(days)} · сейчас` : daysText(days))
     );
   }));
 }
@@ -804,9 +805,9 @@ function dealDetail(id) {
     const deal = store.dealById(id);
     if (!deal) {
       body.append(emptyState({
-        icon: 'deal', title: 'Deal not found',
-        message: 'It may have been deleted.',
-        action: el('a.btn.btn-ghost', { href: '#/pipeline' }, 'Back to pipeline'),
+        icon: 'deal', title: 'Сделка не найдена',
+        message: 'Возможно, её удалили.',
+        action: el('a.btn.btn-ghost', { href: '#/pipeline' }, 'Вернуться в воронку'),
       }));
       return;
     }
@@ -821,7 +822,7 @@ function dealDetail(id) {
     const due = deal.expectedClose && isOpen(deal) ? dueLabel(deal.expectedClose) : null;
 
     /* Stage stepper: every stage a button, current one marked. */
-    const stepper = el('div.stage-stepper', { role: 'group', 'aria-label': 'Deal stage' },
+    const stepper = el('div.stage-stepper', { role: 'group', 'aria-label': 'Этап сделки' },
       stages.map((s) => el('button.stage-step', {
         type: 'button',
         className: `stage-step${deal.stage === s.id ? ' active' : ''}`,
@@ -843,9 +844,9 @@ function dealDetail(id) {
             isRecurring(deal) && el('span.deal-detail-contract', {},
               contractText(deal, store.settings.currency)),
             isOpen(deal) && el('span.deal-detail-prob', {},
-              `${probability}% likely · ${moneyText(contractValue(deal) * probability / 100)} weighted`),
+              `Вероятность ${probability}% · взвешенная сумма ${moneyText(contractValue(deal) * probability / 100)}`),
             isOpen(deal) && confidenceLabel(deal.confidence) && el('span.age-pill.conf-pill', {
-              title: 'Your confidence override. The forecast uses this instead of the stage weight',
+              title: 'Ваша оценка уверенности. Прогноз использует её вместо вероятности этапа',
             },
               el('span', { html: icon('target', 12, 2.2), 'aria-hidden': 'true' }),
               confidenceLabel(deal.confidence))
@@ -860,10 +861,10 @@ function dealDetail(id) {
               dataset: due?.status === 'overdue' ? { tone: 'overdue' } : {},
             },
               el('span', { html: icon('calendar', 13, 2) }),
-              due?.status === 'overdue' ? `Close date ${due.text}` : `Closes ${formatDate(deal.expectedClose)}`),
+              due?.status === 'overdue' ? `Закрытие ${due.text}` : `Закрытие ${formatDate(deal.expectedClose)}`),
             !isOpen(deal) && deal.closedAt && el('span.chip.static', {},
               el('span', { html: icon(deal.stage === 'won' ? 'trophy' : 'circleX', 13, 2) }),
-              `Closed ${timeAgo(deal.closedAt)}`),
+              `Закрыта ${timeAgo(deal.closedAt)}`),
             isOpen(deal) && el('span.chip.static', {
               dataset: isStalled(deal, store.settings.staleDays) ? { tone: 'stalled' } : {},
             },
@@ -878,17 +879,17 @@ function dealDetail(id) {
           store.contactById(deal.contactId)?.email && el('button.btn.btn-ghost.btn-sm', {
             html: icon('mail', 15, 2),
             onclick: () => openEmailFlow({ contact: store.contactById(deal.contactId), deal }),
-          }, ' Email…'),
+          }, ' Письмо…'),
           el('button.btn.btn-ghost.btn-sm', {
             html: icon('pencil', 15, 2),
             onclick: () => openDealForm(deal),
-          }, ' Edit'),
+          }, ' Изменить'),
           el('button.icon-btn', {
-            html: icon('trash', 17, 2), 'aria-label': `Delete ${deal.name}`,
+            html: icon('trash', 17, 2), 'aria-label': `Удалить «${deal.name}»`,
             onclick: async () => {
               const ok = await confirmDialog({
-                title: 'Delete this deal?',
-                message: 'Its history and follow-ups stay, but lose the link to this deal. It goes to Recently deleted in Settings for 30 days.',
+                title: 'Удалить сделку?',
+                message: 'История и задачи останутся, но потеряют связь со сделкой. Сама сделка 30 дней пролежит в корзине в настройках.',
               });
               if (!ok) return;
               // Leave first: the store empties memory and emits before its
@@ -897,9 +898,9 @@ function dealDetail(id) {
               location.hash = '#/pipeline';
               try {
                 const entry = await store.deleteDeal(id);
-                deletedToast('Deal deleted', entry);
+                deletedToast('Сделка удалена', entry);
               } catch {
-                toast('Couldn’t delete. Check your connection', { icon: 'wifiOff' });
+                toast('Не удалось удалить. Проверьте подключение', { icon: 'wifiOff' });
               }
             },
           })
@@ -910,20 +911,20 @@ function dealDetail(id) {
         el('div.settings-body', {}, stepper)
       ),
 
-      section('People',
+      section('Люди',
         el('button.btn.btn-ghost.btn-sm', {
           html: icon('userPlus', 14, 2),
           onclick: () => openDealForm(deal),
-        }, people.length ? ' Edit' : ' Add'),
+        }, people.length ? ' Изменить' : ' Добавить'),
         people.length
           ? el('div', {},
               el('div.people-list', {}, people.map((contactId) => personRow(deal, contactId))),
               // The question that decides a B2B deal, asked where it can
               // be answered in one click.
               !hasDecisionMaker(deal) && isOpen(deal) && el('p.card-note', {},
-                'Nobody here is marked as the decision maker - the person who actually signs.')
+                'Никто не отмечен как принимающий решение — тот, кто на самом деле подписывает.')
             )
-          : el('p.card-empty', {}, 'No people on this deal yet. Add the champion, and the person who signs.')
+          : el('p.card-empty', {}, 'В сделке пока нет людей. Добавьте того, кто её продвигает, и того, кто подписывает.')
       ),
 
       deal.notes && el('section.card', {},
@@ -932,54 +933,54 @@ function dealDetail(id) {
 
       (() => {
         const rows = customFieldRows('deals', deal);
-        return rows && section('Details', null, el('div.settings-body', {}, rows));
+        return rows && section('Дополнительно', null, el('div.settings-body', {}, rows));
       })(),
 
       /* Why it closed: captured at the transition, editable forever after. */
-      !isOpen(deal) && section('Why it closed',
+      !isOpen(deal) && section('Причина закрытия',
         el('button.btn.btn-ghost.btn-sm', {
           html: icon(deal.closeReason ? 'pencil' : 'plus', 14, 2.2),
           onclick: () => openCloseReasonForm(deal),
-        }, deal.closeReason ? ' Edit' : ' Add reason'),
+        }, deal.closeReason ? ' Изменить' : ' Указать причину'),
         deal.closeReason
           ? el('div.settings-body', {},
               el('div.chip-row', {}, closeReasonChip(deal)),
               deal.closeReasonNote && el('p.detail-notes.mt-sm', {}, deal.closeReasonNote)
             )
           : el('p.card-empty', {},
-              'No reason recorded. Three months from now, this is the field that tells you why you win.')
+              'Причина не указана. Через три месяца именно это поле подскажет, почему вы выигрываете.')
       ),
 
-      (deal.stageHistory?.length > 1) && section('Stage history', null,
+      (deal.stageHistory?.length > 1) && section('История этапов', null,
         el('div.settings-body', {}, stageTimeline(deal, stages))
       ),
 
-      section('Follow-ups',
+      section('Задачи',
         el('div.card-actions', {},
           playbookButton({ dealId: id, contactId: deal.contactId }),
           el('button.btn.btn-ghost.btn-sm', {
             html: icon('plus', 14, 2.2),
             onclick: () => openTaskForm(null, { presets: { dealId: id, contactId: deal.contactId } }),
-          }, ' Add')
+          }, ' Добавить')
         ),
         tasks.length
           ? el('div.task-list', {}, tasks.map((t) =>
               taskRow(t, { context: { dealId: id }, onEdit: (task) => openTaskForm(task) })))
-          : el('p.card-empty', {}, 'Nothing scheduled for this deal.')
+          : el('p.card-empty', {}, 'По сделке ничего не запланировано.')
       ),
 
-      section('History',
+      section('История',
         el('div.card-actions', {},
           catchUpButton({ deal }),
           el('button.btn.btn-ghost.btn-sm', {
             html: icon('plus', 14, 2.2),
             onclick: () => openActivityForm(null, { presets: { dealId: id, contactId: deal.contactId } }),
-          }, ' Log')
+          }, ' Записать')
         ),
         history.length
           ? el('div.activity-list', {}, history.map((a) =>
               activityRow(a, { context: { dealId: id }, onEdit: (act) => openActivityForm(act) })))
-          : el('p.card-empty', {}, 'Meetings, calls, emails, and notes about this deal show up here.')
+          : el('p.card-empty', {}, 'Здесь появятся встречи, звонки, письма и заметки по сделке.')
       ),
 
       attachmentsSection({ dealId: id }),
@@ -991,7 +992,7 @@ function dealDetail(id) {
   render();
 
   root.append(
-    el('a.back-link', { href: '#/pipeline', html: icon('chevL', 16, 2.2) }, 'Pipeline'),
+    el('a.back-link', { href: '#/pipeline', html: icon('chevL', 16, 2.2) }, 'Воронка'),
     body
   );
   root.destroy = () => store.removeEventListener('change', renderOnChange);

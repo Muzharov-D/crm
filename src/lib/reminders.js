@@ -12,7 +12,7 @@
  * morning nudge.
  */
 
-import { todayISO, formatClock } from './util.js';
+import { todayISO, formatClock, countLabel } from './util.js';
 
 const SEEN_KEY = 'crm:notified:v1';
 const CHECK_MS = 60_000;
@@ -89,10 +89,10 @@ export function checkReminders(store, now = new Date()) {
     const dueToday = open.filter((t) => t.due === today).length;
     if (overdue || dueToday) {
       const parts = [
-        overdue && `${overdue} overdue`,
-        dueToday && `${dueToday} due today`,
+        overdue && countLabel(overdue, ['просроченная', 'просроченные', 'просроченных']),
+        dueToday && `${dueToday} на сегодня`,
       ].filter(Boolean).join(' · ');
-      show('Follow-ups need you', parts, '#/followups');
+      show('Задачи ждут вас', parts, '#/followups');
       sent++;
     }
   }
@@ -107,7 +107,7 @@ export function checkReminders(store, now = new Date()) {
     if (seen[key]) continue;
     seen[key] = today;
     // Same clock the rest of the app speaks ("2:30pm", not "14:30").
-    show(task.title, `Due at ${formatClock(task.dueTime)}`, `#/followups?task=${task.id}`);
+    show(task.title, `Сегодня в ${formatClock(task.dueTime)}`, `#/followups?task=${task.id}`);
     sent++;
   }
 

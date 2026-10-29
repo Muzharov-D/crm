@@ -1,7 +1,7 @@
 import { el, clear, keepingFocus } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { store, ACTIVITY_TYPES } from '../lib/store.js';
-import { fuzzyIncludes, formatDate } from '../lib/util.js';
+import { fuzzyIncludes, formatDate, countLabel, plural } from '../lib/util.js';
 import {
   ACTIVITY_WINDOWS, matchesActivityWindow, touchProgress, weekRange,
 } from '../lib/activity.js';
@@ -10,6 +10,16 @@ import { openActivityForm } from '../ui/forms.js';
 
 /** How many rows one page of the log shows before "Show more". */
 const PAGE = 50;
+
+/* Per-type tiles: the type named as a plural heading, and its genitive
+   after "из N" ("3 из 5 звонков"). */
+const TYPE_PLURAL = { meeting: 'Встречи', call: 'Звонки', email: 'Письма', note: 'Заметки' };
+const TYPE_OF_N = {
+  meeting: ['встречи', 'встреч', 'встреч'],
+  call: ['звонка', 'звонков', 'звонков'],
+  email: ['письма', 'писем', 'писем'],
+  note: ['заметки', 'заметок', 'заметок'],
+};
 
 /**
  * The activity log: every meeting, call, email, and note in one place,
@@ -63,9 +73,9 @@ export function activityView() {
       return options.length ? { label, options } : null;
     };
     return [
-      group('Leads', 'contact', seen.contacts, (id) => store.contactById(id)?.name),
-      group('Deals', 'deal', seen.deals, (id) => store.dealById(id)?.name),
-      group('Companies', 'company', seen.companies, (id) => store.companyById(id)?.name),
+      group('Контакты', 'contact', seen.contacts, (id) => store.contactById(id)?.name),
+      group('Сделки', 'deal', seen.deals, (id) => store.dealById(id)?.name),
+      group('Компании', 'company', seen.companies, (id) => store.companyById(id)?.name),
     ].filter(Boolean);
   }
 
@@ -100,13 +110,13 @@ export function activityView() {
   function renderControls() {
     clear(controls);
     const search = searchBox({
-      placeholder: 'Search what you logged…',
+      placeholder: 'Поиск по истории…',
       value: query,
       oninput: (e) => { query = e.target.value.trim(); shown = PAGE; render(); },
     });
 
     const windowSelect = el('select.select', {
-      'aria-label': 'Filter by date',
+      'aria-label': 'Фильтр по дате',
       dataset: { focusKey: 'activity-window' },
       onchange: refresh((e) => { dateWindow = e.target.value; }),
     }, ACTIVITY_WINDOWS.map((w) =>
@@ -119,16 +129,16 @@ export function activityView() {
        logged activity is linked to nobody printed a bare 0 beside the date
        filter. */
     const linkSelect = groups.length ? el('select.select', {
-      'aria-label': 'Filter by linked record',
+      'aria-label': 'Фильтр по связи',
       dataset: { focusKey: 'activity-link' },
       onchange: refresh((e) => { linked = e.target.value; }),
     },
-      el('option', { value: '', selected: !linked }, 'Any record'),
+      el('option', { value: '', selected: !linked }, 'Все связи'),
       groups.map((g) => el('optgroup', { label: g.label }, g.options.map(option)))
     ) : null;
 
-    const chips = el('div.filter-row', { role: 'group', 'aria-label': 'Filter by type' },
-      [{ value: 'all', label: 'All' }, ...ACTIVITY_TYPES].map((t) =>
+    const chips = el('div.filter-row', { role: 'group', 'aria-label': 'Фильтр по типу' },
+      [{ value: 'all', label: 'Все' }, ...ACTIVITY_TYPES].map((t) =>
         el('button.filter-chip', {
           type: 'button',
           className: `filter-chip${typeFilter === t.value ? ' active' : ''}`,
@@ -153,30 +163,30 @@ export function activityView() {
     const { from, to } = weekRange();
     targets.append(el('div.stat-grid', { className: 'stat-grid wide' },
       statTile({
-        label: 'Touches this week',
-        value: `${progress.logged} of ${progress.target}`,
+        label: 'Касаний за неделю',
+        value: `${progress.logged} из ${progress.target}`,
         progress: {
           pct: progress.pct,
           tone: progress.pace === 'met' ? 'good' : progress.pace === 'behind' ? 'warn' : '',
-          label: `${Math.round(progress.pct * 100)}% of ${progress.target}`,
+          label: `${Math.round(progress.pct * 100)}% из ${progress.target}`,
         },
         sub: el('span', {},
           `${formatDate(from)} – ${formatDate(to)} · `,
           el('span', { className: `stat-pace ${progress.pace === 'behind' ? 'warn' : 'good'}` },
-            progress.pace === 'met' ? 'target met'
-              : progress.pace === 'on-track' ? 'on track'
-              : `${progress.gap} behind pace`)
+            progress.pace === 'met' ? 'план выполнен'
+              : progress.pace === 'on-track' ? 'в графике'
+              : `отставание ${progress.gap}`)
         ),
       }),
       progress.byType.map((row) => statTile({
-        label: `${row.label}s`,
-        value: `${row.logged} of ${row.target}`,
+        label: TYPE_PLURAL[row.type] || row.label,
+        value: `${row.logged} из ${row.target}`,
         progress: {
           pct: Math.min(1, row.pct ?? 0),
           tone: row.logged >= row.target ? 'good' : '',
-          label: `${row.logged} of ${row.target} ${row.label.toLowerCase()}s`,
+          label: `${row.logged} из ${row.target}${TYPE_OF_N[row.type] ? ` ${plural(row.target, TYPE_OF_N[row.type])}` : ''}`,
         },
-        sub: 'this week',
+        sub: 'за неделю',
       }))
     ));
   }
@@ -188,9 +198,9 @@ export function activityView() {
     if (!store.activities.length) {
       body.append(emptyState({
         icon: 'video',
-        title: 'Nothing logged yet',
-        message: 'Every meeting, call, email, and note you log lands here, newest first - the record of the work, whatever became of the deals.',
-        action: el('button.btn.btn-primary', { onclick: () => openActivityForm() }, 'Log your first activity'),
+        title: 'В истории пока пусто',
+        message: 'Сюда попадают все встречи, звонки, письма и заметки, которые вы записываете, сначала новые — история работы, чем бы ни закончились сделки.',
+        action: el('button.btn.btn-primary', { onclick: () => openActivityForm() }, 'Сделать первую запись'),
       }));
       return;
     }
@@ -202,9 +212,9 @@ export function activityView() {
     if (!rows.length) {
       body.append(emptyState({
         icon: 'search',
-        title: 'Nothing matches',
-        message: 'No activity matches the filters you have on.',
-        action: el('button.btn.btn-ghost', { onclick: clearFilters }, 'Clear filters'),
+        title: 'Ничего не найдено',
+        message: 'Нет записей, подходящих под фильтры.',
+        action: el('button.btn.btn-ghost', { onclick: clearFilters }, 'Сбросить фильтры'),
       }));
       return;
     }
@@ -212,8 +222,8 @@ export function activityView() {
     const page = rows.slice(0, shown);
     body.append(el('section.card', {},
       el('div.list-summary', {},
-        el('span', {}, `${rows.length} activit${rows.length === 1 ? 'y' : 'ies'}`),
-        filtersActive() && el('button.btn-inline', { onclick: clearFilters }, 'Clear filters')
+        el('span', {}, countLabel(rows.length, ['запись', 'записи', 'записей'])),
+        filtersActive() && el('button.btn-inline', { onclick: clearFilters }, 'Сбросить фильтры')
       ),
       el('div.activity-list', {}, page.map((a) =>
         activityRow(a, { onEdit: (act) => openActivityForm(act) }))),
@@ -221,8 +231,8 @@ export function activityView() {
         el('button.btn-inline', {
           onclick: keepingFocus(() => { shown += PAGE; render(); }),
           dataset: { focusKey: 'activity-more' },
-        }, `Show ${Math.min(PAGE, rows.length - page.length)} more`),
-        ` · ${page.length} of ${rows.length} shown`)
+        }, `Показать ещё ${Math.min(PAGE, rows.length - page.length)}`),
+        ` · показано ${page.length} из ${rows.length}`)
     ));
   }
 
@@ -249,11 +259,11 @@ export function activityView() {
   store.addEventListener('change', renderOnChange);
 
   root.append(
-    pageHead('Activity',
+    pageHead('История',
       el('button.btn.btn-primary', {
         html: icon('plus', 16, 2.2),
         onclick: () => openActivityForm(),
-      }, ' Log activity')),
+      }, ' Записать в историю')),
     targets,
     controls,
     body

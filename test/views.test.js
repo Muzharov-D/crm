@@ -133,14 +133,14 @@ describe('applying a view whose conditions have outlived their subject', () => {
       { tags: ['VIP'] });
     expect(filters.tags).toEqual(['vip']);
     expect(filters.status).toBe('cold');
-    expect(dropped).toEqual(['the tag “gone”']);
+    expect(dropped).toEqual(['метка «gone»']);
   });
 
   it('drops a stage that was removed, back to the open board', () => {
     const { filters, dropped } = applyFilters('deals',
       { stage: 'demo' }, { stages: ['new', 'won', 'lost'] });
     expect(filters.stage).toBe('open');
-    expect(dropped).toEqual(['a stage that was removed']);
+    expect(dropped).toEqual(['удалённый этап']);
   });
 
   it('keeps the two pseudo-stages every board has', () => {
@@ -155,13 +155,13 @@ describe('applying a view whose conditions have outlived their subject', () => {
       { fields: ['plan'], sortKeys: ['name', 'value'] });
     expect(filters.fields).toEqual({ plan: 'Pro' });
     expect(filters.sort).toBeNull();
-    expect(dropped).toEqual(['a field that was removed', 'a sort column that no longer exists']);
+    expect(dropped).toEqual(['удалённое поле', 'сортировка по удалённому столбцу']);
   });
 
   it('says each thing once, however many times it applies', () => {
     const { dropped } = applyFilters('deals',
       { fields: { a: '1', b: '2' } }, { fields: [] });
-    expect(dropped).toEqual(['a field that was removed']);
+    expect(dropped).toEqual(['удалённое поле']);
   });
 
   it('checks nothing it wasn’t told about', () => {
@@ -174,18 +174,20 @@ describe('applying a view whose conditions have outlived their subject', () => {
 describe('describeFilters', () => {
   it('says what a view is, in the words the list uses', () => {
     expect(describeFilters('contacts', { status: 'cold', tags: ['vip'] },
-      { statusLabel: () => 'Going cold' })).toBe('Going cold · tag vip');
+      { statusLabel: () => 'Остывает' })).toBe('Остывает · метка vip');
+    expect(describeFilters('contacts', { tags: ['vip', 'b', 'c', 'd', 'e'], fields: { a: '1', b: '2' } }))
+      .toBe('5 меток · 2 поля');
     expect(describeFilters('deals', { stage: 'proposal', closeWindow: 'month' },
-      { stageLabel: () => 'Proposal' })).toBe('Proposal · month');
-    expect(describeFilters('companies', { query: 'acme' })).toBe('“acme”');
-    expect(describeFilters('contacts', {})).toBe('no filters');
+      { stageLabel: () => 'Предложение' })).toBe('Предложение · month');
+    expect(describeFilters('companies', { query: 'acme' })).toBe('«acme»');
+    expect(describeFilters('contacts', {})).toBe('без фильтров');
   });
 
   it('names the close window and the sort column, not their stored values', () => {
     expect(describeFilters('deals',
       { closeWindow: 'month', sort: { key: 'expectedClose', dir: 'asc' } },
-      { windowLabel: () => 'Closing this month' }))
-      .toBe('Closing this month · sorted by Expected close');
+      { windowLabel: () => 'Закрываются в этом месяце' }))
+      .toBe('Закрываются в этом месяце · сортировка: Дата закрытия');
     // No formatter given: the stored value is still all there is to say.
     expect(describeFilters('deals', { closeWindow: 'quarter' })).toBe('quarter');
   });
@@ -196,7 +198,7 @@ describe('deal sort columns', () => {
     expect(DEAL_SORT_COLUMNS.map((c) => c.key)).toEqual(
       ['name', 'link', 'stage', 'value', 'expectedClose', 'updatedAt']);
     expect(DEAL_SORT_COLUMNS.some((c) => c.key === DEFAULT_DEAL_SORT.key)).toBe(true);
-    expect(dealSortLabel('updatedAt')).toBe('Last updated');
+    expect(dealSortLabel('updatedAt')).toBe('Обновлена');
   });
 
   it('hands back an unknown key rather than nothing', () => {

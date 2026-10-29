@@ -6,8 +6,8 @@ import {
 
 describe('the week', () => {
   it('starts on Monday', () => {
-    expect(WEEKDAYS[0]).toBe('Mon');
-    expect(WEEKDAYS[6]).toBe('Sun');
+    expect(WEEKDAYS[0]).toBe('Пн');
+    expect(WEEKDAYS[6]).toBe('Вс');
     // 2026-08-20 is a Thursday.
     expect(weekdayIndex('2026-08-20')).toBe(3);
     expect(weekdayIndex('2026-08-17')).toBe(0);

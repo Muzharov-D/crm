@@ -25,7 +25,7 @@ import {
 } from '../lib/deal-contacts.js';
 import { contactByEmail } from '../lib/dupes.js';
 import { openCloseReasonForm } from './close-reason.js';
-import { todayISO, clamp } from '../lib/util.js';
+import { todayISO, clamp, countLabel } from '../lib/util.js';
 
 /* ---------- field helpers ---------- */
 
@@ -85,7 +85,7 @@ function textArea(props = {}) {
 
 function submitRow(label, { onDelete = null } = {}) {
   return el('div.form-actions', {},
-    onDelete && el('button.btn.btn-ghost.btn-danger-ghost', { type: 'button', onclick: onDelete }, 'Delete'),
+    onDelete && el('button.btn.btn-ghost.btn-danger-ghost', { type: 'button', onclick: onDelete }, 'Удалить'),
     el('div.grow'),
     el('button.btn.btn-primary', { type: 'submit' }, label)
   );
@@ -100,7 +100,7 @@ function deleteAction({ title, message, run, done, closeModal }) {
     try {
       entry = await run();
     } catch {
-      toast('Couldn’t delete. Check your connection', { icon: 'wifiOff' });
+      toast('Не удалось удалить. Проверьте подключение', { icon: 'wifiOff' });
       return;
     }
     closeModal();
@@ -119,17 +119,17 @@ export function wireForm(form, save) {
       await save();
     } catch (err) {
       console.error(err);
-      toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+      toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' });
       btn.disabled = false;
     }
   });
 }
 
 const companyOptions = () => [
-  { value: '', label: 'No company' },
+  { value: '', label: 'Без компании' },
   ...[...store.companies].sort((a, b) => a.name.localeCompare(b.name))
     .map((c) => ({ value: c.id, label: c.name })),
-  { value: '__new', label: 'New company…' },
+  { value: '__new', label: 'Новая компания…' },
 ];
 
 const byName = (list) => [...list].sort((a, b) => a.name.localeCompare(b.name));
@@ -144,23 +144,23 @@ const contactOptions = (dealId = null) => {
   const all = byName(store.contacts).map((c) => ({ value: c.id, label: c.name }));
   const deal = dealId ? store.dealById(dealId) : null;
   const ids = deal ? dealContactIds(deal) : [];
-  if (ids.length < 1) return [{ value: '', label: 'No contact' }, ...all];
+  if (ids.length < 1) return [{ value: '', label: 'Без контакта' }, ...all];
   const onDeal = new Set(ids);
   return [
-    { value: '', label: 'No contact' },
+    { value: '', label: 'Без контакта' },
     {
-      label: `On ${deal.name}`,
+      label: `В сделке «${deal.name}»`,
       options: ids.map((id) => ({
         value: id,
         label: [store.contactById(id)?.name, roleLabel(roleOf(deal, id))].filter(Boolean).join(' · '),
       })).filter((o) => o.label),
     },
-    { label: 'Everyone else', options: all.filter((o) => !onDeal.has(o.value)) },
+    { label: 'Остальные', options: all.filter((o) => !onDeal.has(o.value)) },
   ];
 };
 
 const dealOptions = () => [
-  { value: '', label: 'No deal' },
+  { value: '', label: 'Без сделки' },
   ...[...store.deals].sort((a, b) => b.updatedAt - a.updatedAt)
     .map((d) => ({ value: d.id, label: d.name })),
 ];
@@ -171,7 +171,7 @@ const dealOptions = () => [
  * selected. Falls back to the previous value if that form is dismissed.
  */
 function companySelect(value) {
-  const { wrap, select } = makeSelect(companyOptions(), value || '', { 'aria-label': 'Company' });
+  const { wrap, select } = makeSelect(companyOptions(), value || '', { 'aria-label': 'Компания' });
   let prev = value || '';
   select.addEventListener('change', () => {
     if (select.value !== '__new') { prev = select.value; return; }
@@ -192,14 +192,14 @@ function companySelect(value) {
 export function openCompanyForm(company = null, { onSaved = null } = {}) {
   const name = textInput({ value: company?.name || '', required: true, autocomplete: 'off', maxlength: 120 });
   const industry = textInput({ value: company?.industry || '', autocomplete: 'off', maxlength: 80 });
-  const website = textInput({ value: company?.website || '', inputmode: 'url', autocomplete: 'off', maxlength: 200, placeholder: 'example.com' });
+  const website = textInput({ value: company?.website || '', inputmode: 'url', autocomplete: 'off', maxlength: 200, placeholder: 'example.ru' });
   const size = makeSelect(withCurrent([
-    { value: '', label: 'Unknown' },
-    { value: '1-10', label: '1-10 people' },
-    { value: '10-50', label: '10-50 people' },
-    { value: '50-200', label: '50-200 people' },
-    { value: '200-500', label: '200-500 people' },
-    { value: '500+', label: '500+ people' },
+    { value: '', label: 'Не указано' },
+    { value: '1-10', label: '1–10 человек' },
+    { value: '10-50', label: '10–50 человек' },
+    { value: '50-200', label: '50–200 человек' },
+    { value: '200-500', label: '200–500 человек' },
+    { value: '500+', label: 'Более 500 человек' },
   ], company?.size), company?.size || '');
   const tags = tagInput(company?.tags);
   const notes = textArea({ value: company?.notes || '' });
@@ -216,19 +216,19 @@ export function openCompanyForm(company = null, { onSaved = null } = {}) {
 
   const form = el('form.form', { novalidate: false },
     paste,
-    field('Name', name),
+    field('Название', name),
     el('div.form-grid', {},
-      field('Industry', industry),
-      field('Company size', size.wrap)
+      field('Отрасль', industry),
+      field('Размер компании', size.wrap)
     ),
-    field('Website', website),
-    field('Tags', tags.el),
-    field('Notes', notes),
+    field('Сайт', website),
+    field('Метки', tags.el),
+    field('Заметки', notes),
     custom?.nodes,
-    submitRow(company ? 'Save changes' : 'Add company')
+    submitRow(company ? 'Сохранить' : 'Добавить компанию')
   );
 
-  const modal = openModal({ title: company ? 'Edit company' : 'New company', content: form, guardUnsaved: true });
+  const modal = openModal({ title: company ? 'Редактирование компании' : 'Новая компания', content: form, guardUnsaved: true });
 
   wireForm(form, async () => {
     const data = {
@@ -243,7 +243,7 @@ export function openCompanyForm(company = null, { onSaved = null } = {}) {
       ? await store.updateCompany(company.id, data)
       : await store.addCompany(data);
     modal.close();
-    toast(company ? 'Company updated' : 'Company added');
+    toast(company ? 'Компания обновлена' : 'Компания добавлена');
     onSaved?.(saved);
   });
   return modal;
@@ -253,12 +253,12 @@ export function openCompanyForm(company = null, { onSaved = null } = {}) {
 
 export function openContactForm(contact = null, { presets = {}, onSaved = null } = {}) {
   const name = textInput({ value: contact?.name || '', required: true, autocomplete: 'off', maxlength: 120 });
-  const title = textInput({ value: contact?.title || '', autocomplete: 'off', maxlength: 120, placeholder: 'e.g. Head of Operations' });
+  const title = textInput({ value: contact?.title || '', autocomplete: 'off', maxlength: 120, placeholder: 'Например, операционный директор' });
   const email = textInput({ value: contact?.email || '', type: 'email', autocomplete: 'off', maxlength: 200 });
   const phone = textInput({ value: contact?.phone || '', type: 'tel', autocomplete: 'off', maxlength: 40 });
   const company = companySelect(contact?.companyId ?? presets.companyId ?? '');
   const source = makeSelect(
-    withCurrent([{ value: '', label: 'Unknown' }, ...LEAD_SOURCES.map((s) => ({ value: s, label: s }))],
+    withCurrent([{ value: '', label: 'Не указан' }, ...LEAD_SOURCES.map((s) => ({ value: s, label: s }))],
       contact?.source),
     contact?.source || '');
   const status = makeSelect(CONTACT_STATUSES, contact?.status || 'lead');
@@ -268,7 +268,7 @@ export function openContactForm(contact = null, { presets = {}, onSaved = null }
 
   // The cheapest duplicate to prevent is the one about to be typed in:
   // an email that already belongs to a contact points there instead.
-  const emailField = field('Email', email);
+  const emailField = field('Эл. почта', email);
   const dupeHint = el('div.dupe-inline');
   emailField.append(dupeHint);
   const syncDupeHint = () => {
@@ -281,7 +281,7 @@ export function openContactForm(contact = null, { presets = {}, onSaved = null }
         modal.close();
         location.hash = `#/leads?id=${existing.id}`;
       },
-    }, `Looks like ${existing.name}. Open instead?`));
+    }, `Похоже, это ${existing.name}. Открыть карточку?`));
   };
   email.addEventListener('input', syncDupeHint);
   syncDupeHint();
@@ -309,31 +309,31 @@ export function openContactForm(contact = null, { presets = {}, onSaved = null }
       const unknown = skipped.find(([key]) => key === 'company');
       toast(fillSummary({ filled, skipped }), { icon: 'sparkle' });
       if (unknown && !company.select.value) {
-        toast(`“${draft.company}” isn’t in your companies yet`, { icon: 'company' });
+        toast(`Компании «${draft.company}» пока нет в списке`, { icon: 'company' });
       }
     },
   });
 
   const form = el('form.form', {},
     paste,
-    field('Name', name),
-    field('Job title', title),
+    field('Имя', name),
+    field('Должность', title),
     el('div.form-grid', {},
       emailField,
-      field('Phone', phone)
+      field('Телефон', phone)
     ),
-    field('Company', company.wrap),
+    field('Компания', company.wrap),
     el('div.form-grid', {},
-      field('Source', source.wrap),
-      field('Status', status.wrap)
+      field('Источник', source.wrap),
+      field('Статус', status.wrap)
     ),
-    field('Tags', tags.el),
-    field('Notes', notes),
+    field('Метки', tags.el),
+    field('Заметки', notes),
     custom?.nodes,
-    submitRow(contact ? 'Save changes' : 'Add lead')
+    submitRow(contact ? 'Сохранить' : 'Добавить контакт')
   );
 
-  const modal = openModal({ title: contact ? 'Edit lead' : 'New lead', content: form, guardUnsaved: true });
+  const modal = openModal({ title: contact ? 'Редактирование контакта' : 'Новый контакт', content: form, guardUnsaved: true });
 
   wireForm(form, async () => {
     const data = {
@@ -347,7 +347,7 @@ export function openContactForm(contact = null, { presets = {}, onSaved = null }
       ? await store.updateContact(contact.id, data)
       : await store.addContact(data);
     modal.close();
-    toast(contact ? 'Lead updated' : 'Lead added');
+    toast(contact ? 'Контакт обновлён' : 'Контакт добавлен');
     onSaved?.(saved);
   });
   return modal;
@@ -359,7 +359,7 @@ export function openContactForm(contact = null, { presets = {}, onSaved = null }
    the primary first, which is the shape the store stores. */
 
 const roleOptions = () => [
-  { value: '', label: 'No role' },
+  { value: '', label: 'Без роли' },
   ...DEAL_ROLES.map((r) => ({ value: r.value, label: r.label })),
 ];
 
@@ -371,8 +371,8 @@ function dealPeopleEditor(deal, presets = {}) {
   const rows = [];
 
   const addRow = ({ contactId = '', role = '' } = {}, { focus = false } = {}) => {
-    const who = makeSelect(contactOptions(), contactId, { 'aria-label': 'Another contact' });
-    const what = makeSelect(roleOptions(), role, { 'aria-label': 'Their role' });
+    const who = makeSelect(contactOptions(), contactId, { 'aria-label': 'Ещё один контакт' });
+    const what = makeSelect(roleOptions(), role, { 'aria-label': 'Роль' });
     const row = { who, what };
     const node = el('div.people-row', {},
       el('div.select-wrap.people-who', {}, who.select),
@@ -380,7 +380,7 @@ function dealPeopleEditor(deal, presets = {}) {
       el('button.icon-btn', {
         type: 'button',
         html: icon('x', 16, 2.2),
-        'aria-label': 'Remove this contact from the deal',
+        'aria-label': 'Убрать контакт из сделки',
         onclick: () => {
           rows.splice(rows.indexOf(row), 1);
           node.remove();
@@ -398,13 +398,13 @@ function dealPeopleEditor(deal, presets = {}) {
     type: 'button',
     html: icon('userPlus', 14, 2),
     onclick: () => addRow({}, { focus: true }),
-  }, ' Add another contact');
+  }, ' Добавить ещё контакт');
 
   function syncAdd() {
     // One person is the field above; the rest are these rows.
     addBtn.disabled = rows.length + 1 >= MAX_DEAL_CONTACTS;
     addBtn.title = addBtn.disabled
-      ? `A deal holds at most ${MAX_DEAL_CONTACTS} contacts` : null;
+      ? `В сделке не больше ${countLabel(MAX_DEAL_CONTACTS, ['контакта', 'контактов', 'контактов'])}` : null;
   }
 
   // An existing deal opens with the people it already has - and only
@@ -437,7 +437,7 @@ function dealPeopleEditor(deal, presets = {}) {
 /* ---------- deal ---------- */
 
 export function openDealForm(deal = null, { presets = {}, onSaved = null } = {}) {
-  const name = textInput({ value: deal?.name || '', required: true, autocomplete: 'off', maxlength: 160, placeholder: 'e.g. Acme - annual license' });
+  const name = textInput({ value: deal?.name || '', required: true, autocomplete: 'off', maxlength: 160, placeholder: 'Например, «Ромашка» — годовая лицензия' });
   const value = el('input.input', {
     type: 'number', min: '0', step: 'any', inputmode: 'decimal',
     value: deal ? String(deal.value) : '', required: true, placeholder: '0',
@@ -453,12 +453,12 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
   const term = el('input.input.prob-input.term-input', {
     type: 'number', min: '1', max: String(MAX_TERM), step: '1', inputmode: 'numeric',
     value: String(deal?.term || DEFAULT_TERM),
-    'aria-label': 'Contract term, months',
+    'aria-label': 'Срок договора, месяцев',
   });
   const termWrap = el('span.stage-prob-field.term-field', {},
-    term, el('span.prob-unit', { 'aria-hidden': 'true' }, 'mo'));
+    term, el('span.prob-unit', { 'aria-hidden': 'true' }, 'мес.'));
   const billingHint = el('p.field-hint.billing-hint');
-  const valueField = field(`Value (${store.settings.currency})`, value);
+  const valueField = field(`Сумма (${store.settings.currency})`, value);
   const valueLabel = valueField.querySelector('.field-label');
 
   /** The deal as the form currently reads, for the derived figures below. */
@@ -483,7 +483,7 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
     const draft = draftDeal();
     billingHint.textContent = recurring
       ? `${rateText(draft, store.settings.currency)} · ${contractText(draft, store.settings.currency)}`
-      : 'A single payment. Choose Monthly or Annual for a subscription.';
+      : 'Разовый платёж. Для подписки выберите оплату в месяц или в год.';
   };
   syncBilling();
   billing.select.addEventListener('change', () => {
@@ -507,9 +507,9 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
   const current = typeof deal?.confidence === 'number' ? deal.confidence : null;
   const isLevel = CONFIDENCE_LEVELS.some((l) => l.value === current);
   const confidence = makeSelect([
-    { value: '', label: 'Stage weight (default)' },
+    { value: '', label: 'По этапу (по умолчанию)' },
     ...CONFIDENCE_LEVELS.map((l) => ({ value: String(l.value), label: `${l.label} · ${Math.round(l.value * 100)}%` })),
-    { value: 'custom', label: 'Custom %…' },
+    { value: 'custom', label: 'Свой %…' },
   ], current === null ? '' : (isLevel ? String(current) : 'custom'));
   const confidencePct = el('input.input.prob-input', {
     // Whole percents. A step of five reads as a spinner nicety and lands
@@ -519,7 +519,7 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
     // 35" - about a number the user chose deliberately.
     type: 'number', min: '0', max: '100', step: '1',
     value: current !== null ? String(Math.round(current * 100)) : '50',
-    'aria-label': 'Confidence, percent',
+    'aria-label': 'Уверенность, процентов',
   });
   const confidencePctWrap = el('span.stage-prob-field.conf-pct', {},
     confidencePct, el('span.prob-unit', { 'aria-hidden': 'true' }, '%'));
@@ -548,32 +548,32 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
   });
 
   const form = el('form.form', {},
-    field('Deal name', name),
+    field('Название сделки', name),
     el('div.form-grid', {},
       valueField,
-      field('Stage', stage.wrap)
+      field('Этап', stage.wrap)
     ),
-    field('Billing', el('div.conf-field', {}, billing.wrap, termWrap)),
+    field('Оплата', el('div.conf-field', {}, billing.wrap, termWrap)),
     billingHint,
     // The contact and their role take the whole row: sharing it with
     // Company squeezed two selects into half a modal, where "Mei Tanaka"
     // read "Mei Tar" and "Decision maker" read "Decisio".
-    field('Contact', el('div.conf-field', {}, contact.wrap, people.primaryRole.wrap)),
+    field('Контакт', el('div.conf-field', {}, contact.wrap, people.primaryRole.wrap)),
     people.nodes,
-    field('Company', company.wrap),
+    field('Компания', company.wrap),
     el('div.form-grid', {},
-      field('Expected close', expectedClose, { hint: 'Drives the monthly forecast.' }),
-      field('Forecast confidence', el('div.conf-field', {}, confidence.wrap, confidencePctWrap), {
-        hint: 'Your call on this deal, over the stage weight. Clears when it closes.',
+      field('Дата закрытия', expectedClose, { hint: 'По ней строится прогноз по месяцам.' }),
+      field('Уверенность', el('div.conf-field', {}, confidence.wrap, confidencePctWrap), {
+        hint: 'Ваша оценка сделки вместо вероятности этапа. Сбрасывается при закрытии.',
       })
     ),
-    field('Tags', tags.el),
-    field('Notes', notes),
+    field('Метки', tags.el),
+    field('Заметки', notes),
     custom?.nodes,
-    submitRow(deal ? 'Save changes' : 'Add deal')
+    submitRow(deal ? 'Сохранить' : 'Добавить сделку')
   );
 
-  const modal = openModal({ title: deal ? 'Edit deal' : 'New deal', content: form, guardUnsaved: true });
+  const modal = openModal({ title: deal ? 'Редактирование сделки' : 'Новая сделка', content: form, guardUnsaved: true });
 
   wireForm(form, async () => {
     const data = {
@@ -602,7 +602,7 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
       ? await store.updateDeal(deal.id, data)
       : await store.addDeal(data);
     modal.close();
-    toast(deal ? 'Deal updated' : 'Deal added');
+    toast(deal ? 'Сделка обновлена' : 'Сделка добавлена');
     onSaved?.(saved);
     if (closing) setTimeout(() => openCloseReasonForm(saved), 220);
   });
@@ -612,7 +612,7 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
 /* ---------- activity (meeting / call / email / note) ---------- */
 
 export function openActivityForm(activity = null, { presets = {}, onSaved = null } = {}) {
-  const summary = textInput({ value: activity?.summary || '', required: true, maxlength: 200, placeholder: 'e.g. Demo call with Mei' });
+  const summary = textInput({ value: activity?.summary || '', required: true, maxlength: 200, placeholder: 'Например, демо-звонок с Анной' });
   const type = makeSelect(ACTIVITY_TYPES, activity?.type ?? presets.type ?? 'meeting');
   const date = el('input.input', { type: 'date', value: activity?.date || todayISO(), required: true });
   const dealId = activity?.dealId ?? presets.dealId ?? '';
@@ -624,31 +624,31 @@ export function openActivityForm(activity = null, { presets = {}, onSaved = null
     const keep = contact.select.value;
     contact.select.replaceChildren(...optionNodes(contactOptions(dealSel.select.value), keep));
   });
-  const notes = textArea({ value: activity?.notes || '', rows: 4, placeholder: 'What was said, what happens next…' });
+  const notes = textArea({ value: activity?.notes || '', rows: 4, placeholder: 'О чём договорились, что дальше…' });
 
   const form = el('form.form', {},
     el('div.form-grid', {},
-      field('Type', type.wrap),
-      field('Date', date)
+      field('Тип', type.wrap),
+      field('Дата', date)
     ),
-    field('Summary', summary),
+    field('Кратко', summary),
     el('div.form-grid', {},
-      field('Contact', contact.wrap),
-      field('Deal', dealSel.wrap)
+      field('Контакт', contact.wrap),
+      field('Сделка', dealSel.wrap)
     ),
-    field('Notes', notes),
-    submitRow(activity ? 'Save changes' : 'Log it', {
+    field('Заметки', notes),
+    submitRow(activity ? 'Сохранить' : 'Записать', {
       onDelete: activity && deleteAction({
-        title: 'Delete this activity?',
-        message: 'It is removed from every lead, company, and deal history, and goes to Recently deleted for 30 days.',
+        title: 'Удалить запись?',
+        message: 'Запись исчезнет из истории контакта, компании и сделки и 30 дней пролежит в корзине.',
         run: () => store.deleteActivity(activity.id),
-        done: 'Activity deleted',
+        done: 'Запись удалена',
         closeModal: () => modal.close(),
       }),
     })
   );
 
-  const modal = openModal({ title: activity ? 'Edit activity' : 'Log activity', content: form, guardUnsaved: true });
+  const modal = openModal({ title: activity ? 'Редактирование записи' : 'Запись в историю', content: form, guardUnsaved: true });
 
   wireForm(form, async () => {
     const linkedContact = store.contactById(contact.select.value);
@@ -671,9 +671,9 @@ export function openActivityForm(activity = null, { presets = {}, onSaved = null
     // Logging a touch on a record with nothing else booked is the moment
     // to book the next one; the nudge replaces the plain confirmation.
     const nudged = !activity && maybeNudgeNextStep({
-      contactId: data.contactId, dealId: data.dealId, lead: 'Logged',
+      contactId: data.contactId, dealId: data.dealId, lead: 'Записано',
     });
-    if (!nudged) toast(activity ? 'Activity updated' : 'Activity logged');
+    if (!nudged) toast(activity ? 'Запись обновлена' : 'Записано в историю');
     onSaved?.(saved);
   });
   return modal;
@@ -684,18 +684,18 @@ export function openActivityForm(activity = null, { presets = {}, onSaved = null
 /* Cadences founders actually run; the model takes any N + unit, so an
    imported oddball ("every 5 days") keeps its own entry via repeatLabel. */
 const REPEAT_OPTIONS = [
-  { value: '', label: 'Doesn’t repeat' },
-  { value: '1:day', label: 'Every day' },
-  { value: '1:week', label: 'Every week' },
-  { value: '2:week', label: 'Every 2 weeks' },
-  { value: '1:month', label: 'Every month' },
-  { value: '2:month', label: 'Every 2 months' },
-  { value: '3:month', label: 'Every 3 months' },
-  { value: '6:month', label: 'Every 6 months' },
+  { value: '', label: 'Не повторять' },
+  { value: '1:day', label: 'Каждый день' },
+  { value: '1:week', label: 'Каждую неделю' },
+  { value: '2:week', label: 'Раз в 2 недели' },
+  { value: '1:month', label: 'Каждый месяц' },
+  { value: '2:month', label: 'Раз в 2 месяца' },
+  { value: '3:month', label: 'Раз в 3 месяца' },
+  { value: '6:month', label: 'Раз в полгода' },
 ];
 
 export function openTaskForm(task = null, { presets = {}, onSaved = null } = {}) {
-  const title = textInput({ value: task?.title || presets.title || '', required: true, maxlength: 200, placeholder: 'e.g. Send the proposal' });
+  const title = textInput({ value: task?.title || presets.title || '', required: true, maxlength: 200, placeholder: 'Например, отправить предложение' });
   const due = el('input.input', { type: 'date', value: task?.due || presets.due || todayISO(), required: true });
   // No step. A five-minute one reads as a spinner nicety and lands as
   // validation: "call at 2:37" - typed here, or carried in by an import
@@ -718,17 +718,17 @@ export function openTaskForm(task = null, { presets = {}, onSaved = null } = {})
   const repeat = makeSelect(repeatChoices, repeatValue);
 
   const form = el('form.form', {},
-    field('What needs doing?', title),
+    field('Что сделать', title),
     el('div.form-grid', {},
-      field('Due', due),
-      field('Time', dueTime, { hint: 'Optional. Set one to get a reminder at that hour.' })
+      field('Срок', due),
+      field('Время', dueTime, { hint: 'Необязательно. Если указать, придёт напоминание.' })
     ),
-    field('Repeat', repeat.wrap, {
-      hint: 'Checking it off schedules the next one, counted from that day.',
+    field('Повтор', repeat.wrap, {
+      hint: 'Когда отметите выполнение, следующая задача встанет от этого дня.',
     }),
     el('div.form-grid', {},
-      field('Contact', contact.wrap),
-      field('Deal', dealSel.wrap)
+      field('Контакт', contact.wrap),
+      field('Сделка', dealSel.wrap)
     ),
     // Existing follow-ups can leave for the calendar the user actually
     // checks; a new one has no id to name the event with yet. The event
@@ -746,19 +746,19 @@ export function openTaskForm(task = null, { presets = {}, onSaved = null } = {})
         contactId: contact.select.value || null,
         dealId: dealSel.select.value || null,
       }),
-    }, ' Add to calendar'),
-    submitRow(task ? 'Save changes' : 'Add follow-up', {
+    }, ' Добавить в календарь'),
+    submitRow(task ? 'Сохранить' : 'Добавить задачу', {
       onDelete: task && deleteAction({
-        title: 'Delete this follow-up?',
-        message: 'The reminder goes to Recently deleted for 30 days. Done follow-ups can simply stay checked off instead.',
+        title: 'Удалить задачу?',
+        message: 'Задача 30 дней пролежит в корзине. Выполненные задачи можно не удалять, а просто оставить отмеченными.',
         run: () => store.deleteTask(task.id),
-        done: 'Follow-up deleted',
+        done: 'Задача удалена',
         closeModal: () => modal.close(),
       }),
     })
   );
 
-  const modal = openModal({ title: task ? 'Edit follow-up' : 'New follow-up', content: form, guardUnsaved: true });
+  const modal = openModal({ title: task ? 'Редактирование задачи' : 'Новая задача', content: form, guardUnsaved: true });
 
   wireForm(form, async () => {
     const [every, unit] = repeat.select.value.split(':');
@@ -771,7 +771,7 @@ export function openTaskForm(task = null, { presets = {}, onSaved = null } = {})
       ? await store.updateTask(task.id, data)
       : await store.addTask(data);
     modal.close();
-    toast(task ? 'Follow-up updated' : 'Follow-up added');
+    toast(task ? 'Задача обновлена' : 'Задача добавлена');
     onSaved?.(saved);
   });
   return modal;

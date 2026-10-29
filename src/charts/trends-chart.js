@@ -9,7 +9,7 @@
  */
 
 import { el, clear } from '../ui/dom.js';
-import { formatMonth, formatMoney } from '../lib/util.js';
+import { formatMonth, formatMoney, countLabel } from '../lib/util.js';
 
 const PLOT_H = 150;
 const MINI_H = 90;
@@ -68,12 +68,12 @@ export function flowsChart(flows, currency) {
     const closed = r.won.count + r.lost.count;
     tooltip.append(
       el('div.tip-title', {}, formatMonth(r.key)),
-      tipRow('added', `Added (${r.added.count})`, formatMoney(r.added.value, currency)),
-      tipRow('won', `Won (${r.won.count})`, formatMoney(r.won.value, currency)),
-      tipRow('lost', `Lost (${r.lost.count})`, formatMoney(r.lost.value, currency)),
+      tipRow('added', `Добавлено (${r.added.count})`, formatMoney(r.added.value, currency)),
+      tipRow('won', `Выиграно (${r.won.count})`, formatMoney(r.won.value, currency)),
+      tipRow('lost', `Проиграно (${r.lost.count})`, formatMoney(r.lost.value, currency)),
       // Native append stringifies a bare false into visible text.
       closed > 0 && el('div.tip-sub', {},
-        `Win rate ${Math.round((r.won.count / closed) * 100)}% over ${closed} closed`) || ''
+        `Доля выигранных ${Math.round((r.won.count / closed) * 100)}% из ${countLabel(closed, ['закрытой', 'закрытых', 'закрытых'])}`) || ''
     );
     placeTip(tooltip, chart, col);
   };
@@ -85,9 +85,9 @@ export function flowsChart(flows, currency) {
       : el('div.trend-seg.zero'));
     const col = el('button.chart-col', {
       type: 'button',
-      'aria-label': `${formatMonth(r.key)}: added ${r.added.count} deal${r.added.count === 1 ? '' : 's'} `
-        + `worth ${formatMoney(r.added.value, currency)}, won ${formatMoney(r.won.value, currency)}, `
-        + `lost ${formatMoney(r.lost.value, currency)}`,
+      'aria-label': `${formatMonth(r.key)}: добавлено ${countLabel(r.added.count, ['сделка', 'сделки', 'сделок'])} `
+        + `на ${formatMoney(r.added.value, currency)}, выиграно ${formatMoney(r.won.value, currency)}, `
+        + `проиграно ${formatMoney(r.lost.value, currency)}`,
     },
       el('div.col-plot', { style: { height: `${PLOT_H}px` } },
         el('div.trend-group', {},
@@ -113,9 +113,9 @@ export function flowsChart(flows, currency) {
   // one thing that says what the dark bars are was the one thing missing.
   return el('div.trend-block', {},
     el('div.chart-legend', {},
-      legendKey('added', 'Pipeline added'),
-      legendKey('won', 'Won'),
-      legendKey('lost', 'Lost')
+      legendKey('added', 'Добавлено в воронку'),
+      legendKey('won', 'Выиграно'),
+      legendKey('lost', 'Проиграно')
     ),
     chart
   );
@@ -138,7 +138,7 @@ export function miniTrend(rows, { format, series, ariaLabel }) {
     tooltip.append(
       el('div.tip-title', {}, formatMonth(r.key)),
       el('div.tip-row', {}, el('span.tip-label', {}, series),
-        el('span.tip-value', {}, r.value === null ? 'no data' : format(r.value)))
+        el('span.tip-value', {}, r.value === null ? 'нет данных' : format(r.value)))
     );
     placeTip(tooltip, chart, col);
   };
@@ -147,7 +147,7 @@ export function miniTrend(rows, { format, series, ariaLabel }) {
   const cols = rows.map((r) => {
     const col = el('button.chart-col', {
       type: 'button',
-      'aria-label': `${formatMonth(r.key)}: ${r.value === null ? 'no data' : format(r.value)}`,
+      'aria-label': `${formatMonth(r.key)}: ${r.value === null ? 'нет данных' : format(r.value)}`,
     },
       el('div.col-plot', { style: { height: `${MINI_H}px` } },
         r.value === null

@@ -1,7 +1,7 @@
 import { el, clear, append, keepingFocus } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { store } from '../lib/store.js';
-import { todayISO, formatDate, formatMonth, formatClock } from '../lib/util.js';
+import { todayISO, formatDate, formatClock, countLabel } from '../lib/util.js';
 import { isOpen } from '../lib/forecast.js';
 import {
   WEEKDAYS, monthCells, weekCells, shiftPeriod, periodAnchor, byDay, cellRange, inRange,
@@ -16,6 +16,14 @@ const PER_DAY = 3;
 
 /** A month grid needs room; below this the calendar is a week at a time. */
 const WIDE = '(min-width: 720px)';
+
+/** A calendar heading names the month in full: "Октябрь 2026". */
+const MONTH_NAMES = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const monthTitle = (key) => {
+  const [y, m] = key.split('-').map(Number);
+  return `${MONTH_NAMES[m - 1]} ${y}`;
+};
 
 /**
  * Follow-ups, three ways: grouped by urgency (the default - it answers
@@ -88,15 +96,15 @@ export function followupsView({ params } = {}) {
     try {
       await store.updateTask(task.id, { due: iso });
     } catch {
-      toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+      toast('Не удалось сохранить. Проверьте связь', { icon: 'wifiOff' });
       return;
     }
-    toast(`Moved to ${formatDate(iso)}`, {
+    toast(`Перенесено на ${formatDate(iso)}`, {
       icon: 'calendar',
       action: {
-        label: 'Undo',
+        label: 'Отменить',
         onClick: () => store.updateTask(task.id, prev)
-          .catch(() => toast('Couldn’t undo. Check your connection', { icon: 'wifiOff' })),
+          .catch(() => toast('Не удалось отменить. Проверьте связь', { icon: 'wifiOff' })),
       },
     });
   }
@@ -148,7 +156,7 @@ export function followupsView({ params } = {}) {
             el('span.row-ic', { html: icon('deal', 20, 1.8) }),
             el('div.grow.min0', {},
               el('div.title', {}, deal.name),
-              el('div.sub', {}, 'Expected close')
+              el('div.sub', {}, 'Дата закрытия')
             ),
             el('span.row-chev', { html: icon('chevR', 18) })
           ))),
@@ -169,7 +177,7 @@ export function followupsView({ params } = {}) {
     if (entry.kind === 'deal') {
       return el('a.cal-chip.cal-deal', {
         href: `#/pipeline?id=${entry.deal.id}`,
-        title: `${entry.deal.name} · expected close`,
+        title: `${entry.deal.name} · дата закрытия`,
       },
         el('span.cal-chip-ic', { html: icon('deal', 11, 2.4), 'aria-hidden': 'true' }),
         el('span.cal-chip-text', {}, entry.deal.name)
@@ -182,8 +190,8 @@ export function followupsView({ params } = {}) {
     },
       el('button.cal-chip-main', {
         type: 'button',
-        title: `${task.title} · move or edit`,
-        'aria-label': `${task.title}${task.dueTime ? ` at ${formatClock(task.dueTime)}` : ''}, ${formatDate(task.due)}`,
+        title: `${task.title} · перенести или изменить`,
+        'aria-label': `${task.title}${task.dueTime ? ` в ${formatClock(task.dueTime)}` : ''}, ${formatDate(task.due)}`,
         'aria-haspopup': 'dialog',
         dataset: { focusKey: `cal-task-${task.id}` },
         // Tap, click, or Enter: the keyboard-and-touch path to the same
@@ -214,8 +222,8 @@ export function followupsView({ params } = {}) {
         },
           el('span.row-ic', { html: icon('calendar', 20, 1.8) }),
           el('div.grow', {},
-            el('div.title', {}, 'Move to another day'),
-            el('div.sub', {}, `Now ${formatDate(task.due, { year: 'always' })}`)
+            el('div.title', {}, 'Перенести на другой день'),
+            el('div.sub', {}, `Сейчас: ${formatDate(task.due, { year: 'always' })}`)
           ),
           el('span.row-chev', { html: icon('chevR', 18) })
         ),
@@ -225,8 +233,8 @@ export function followupsView({ params } = {}) {
         },
           el('span.row-ic', { html: icon('pencil', 20, 1.8) }),
           el('div.grow', {},
-            el('div.title', {}, 'Edit the follow-up'),
-            el('div.sub', {}, 'Title, time, repeat, links')
+            el('div.title', {}, 'Изменить задачу'),
+            el('div.sub', {}, 'Название, время, повтор, связи')
           ),
           el('span.row-chev', { html: icon('chevR', 18) })
         )
@@ -259,7 +267,7 @@ export function followupsView({ params } = {}) {
 
     const cellsWrap = el('div.cal-cells', {
       role: 'list',
-      'aria-label': view === 'month' ? `${formatMonth(anchor)} follow-ups` : 'Week of follow-ups',
+      'aria-label': view === 'month' ? `Задачи: ${monthTitle(anchor)}` : 'Задачи на неделю',
     });
     for (const cell of cells) {
       const dayRows = rows[cell.iso] || [];
@@ -271,7 +279,7 @@ export function followupsView({ params } = {}) {
         className: `cal-cell${cell.today ? ' today' : ''}${cell.past ? ' past' : ''}`
           + `${cell.inMonth ? '' : ' outside'}${cell.weekend ? ' weekend' : ''}`,
         'aria-label': `${formatDate(cell.iso, { year: 'always' })}: `
-          + `${dayRows.length} item${dayRows.length === 1 ? '' : 's'}`,
+          + `${countLabel(dayRows.length, ['событие', 'события', 'событий'])}`,
       },
         el('div.cal-cell-head', {},
           el('span.cal-day', {}, view === 'week'
@@ -280,14 +288,14 @@ export function followupsView({ params } = {}) {
           // The count is the point of a grid: an overloaded day is visible
           // before it arrives, not on the morning it does.
           dayRows.length > 1 && el('span.cal-count', {
-            title: `${dayRows.length} on this day`,
+            title: `${countLabel(dayRows.length, ['событие', 'события', 'событий'])} в этот день`,
           }, String(dayRows.length))
         ),
         el('div.cal-items', {}, shown.map(chip)),
         extra > 0 && el('button.cal-more', {
           type: 'button',
           onclick: () => openDaySheet(cell.iso, dayRows),
-        }, `+${extra} more`)
+        }, `ещё ${extra}`)
       );
 
       /* Dropzone: a follow-up dragged here is due here. */
@@ -317,17 +325,17 @@ export function followupsView({ params } = {}) {
         el('button.icon-btn', {
           type: 'button',
           html: icon('chevL', 18, 2.2),
-          'aria-label': view === 'month' ? 'Previous month' : 'Previous week',
+          'aria-label': view === 'month' ? 'Предыдущий месяц' : 'Предыдущая неделя',
           dataset: { focusKey: 'cal-prev' },
           onclick: keepingFocus(() => { anchor = shiftPeriod(view, anchor, -1); render(); }),
         }),
         el('h2.cal-title', {}, view === 'month'
-          ? formatMonth(anchor)
+          ? monthTitle(anchor)
           : `${formatDate(cells[0].iso)} – ${formatDate(cells[6].iso, { year: 'always' })}`),
         el('button.icon-btn', {
           type: 'button',
           html: icon('chevR', 18, 2.2),
-          'aria-label': view === 'month' ? 'Next month' : 'Next week',
+          'aria-label': view === 'month' ? 'Следующий месяц' : 'Следующая неделя',
           dataset: { focusKey: 'cal-next' },
           onclick: keepingFocus(() => { anchor = shiftPeriod(view, anchor, 1); render(); }),
         }),
@@ -335,14 +343,14 @@ export function followupsView({ params } = {}) {
         anchor !== periodAnchor(view) && el('button.btn.btn-ghost.btn-sm', {
           type: 'button',
           onclick: keepingFocus(() => { anchor = periodAnchor(view); render(); }),
-        }, view === 'month' ? 'This month' : 'This week')
+        }, view === 'month' ? 'Текущий месяц' : 'Текущая неделя')
       ),
       grid,
       !anyItems && el('p.card-empty', {}, view === 'month'
-        ? 'Nothing due this month.'
-        : 'Nothing due this week.'),
+        ? 'В этом месяце ничего нет.'
+        : 'На этой неделе ничего нет.'),
       el('p.settings-note.cal-note', {},
-        'Drag a follow-up to another day, or tap it to move it. Deal close dates ride along and stay where they are.')
+        'Перетащите задачу на другой день или нажмите на неё, чтобы перенести. Даты закрытия сделок показаны для справки и не переносятся.')
     );
   }
 
@@ -370,7 +378,7 @@ export function followupsView({ params } = {}) {
           ),
           el('div.task-list', {}, tasks.map((t) => taskRow(t, { onEdit: (task) => openTaskForm(task) }))),
           total > tasks.length && el('div.list-more-note', {},
-            `Showing the ${tasks.length} most recent`)
+            `Показаны последние ${tasks.length}`)
         )
       : null;
 
@@ -383,11 +391,11 @@ export function followupsView({ params } = {}) {
          all-clear inside one. */
       !open.length && el('section.card', {},
         el('div.all-clear', { html: icon('check', 18, 2.4) },
-          el('span', {}, 'All caught up. Nothing due.'))),
-      group('Overdue', overdue, { tone: 'critical' }),
-      group('Today', dueToday),
-      group('Upcoming', upcoming),
-      group('Done', done, { total: doneAll.length }),
+          el('span', {}, 'Всё сделано. Задач нет.'))),
+      group('Просрочено', overdue, { tone: 'critical' }),
+      group('Сегодня', dueToday),
+      group('Предстоящие', upcoming),
+      group('Выполнено', done, { total: doneAll.length }),
     ];
   }
 
@@ -395,15 +403,15 @@ export function followupsView({ params } = {}) {
     clear(controls);
     if (!store.tasks.length) return;
     const options = [
-      ['list', 'List', 'listChecks'],
-      ['week', 'Week', 'calendar'],
-      ...(wide() ? [['month', 'Month', 'calendar']] : []),
+      ['list', 'Список', 'listChecks'],
+      ['week', 'Неделя', 'calendar'],
+      ...(wide() ? [['month', 'Месяц', 'calendar']] : []),
     ];
     // Not .view-toggle: that class trades its labels for icons on a narrow
     // screen because it shares the pipeline header with a primary action.
     // This one has a row to itself, where the words fit and read better.
     controls.append(el('div.seg-group.cal-toggle', {
-      role: 'group', 'aria-label': 'Follow-up layout',
+      role: 'group', 'aria-label': 'Вид задач',
     }, options.map(([value, label, ic]) => el('button.seg', {
       type: 'button',
       className: `seg${effectiveMode() === value ? ' active' : ''}`,
@@ -420,9 +428,9 @@ export function followupsView({ params } = {}) {
     if (!store.tasks.length) {
       body.append(emptyState({
         icon: 'followups',
-        title: 'Nothing to chase yet',
-        message: 'Follow-ups are dated reminders tied to a lead or deal, so no conversation goes quiet by accident.',
-        action: el('button.btn.btn-primary', { onclick: () => openTaskForm() }, 'Add a follow-up'),
+        title: 'Задач пока нет',
+        message: 'Задача — это напоминание с датой, привязанное к контакту или сделке, чтобы ни один разговор не заглох случайно.',
+        action: el('button.btn.btn-primary', { onclick: () => openTaskForm() }, 'Добавить задачу'),
       }));
       return;
     }
@@ -456,11 +464,11 @@ export function followupsView({ params } = {}) {
   render();
 
   root.append(
-    pageHead('Follow-ups',
+    pageHead('Задачи',
       el('button.btn.btn-primary', {
         html: icon('plus', 16, 2.2),
         onclick: () => openTaskForm(),
-      }, ' New follow-up')),
+      }, ' Новая задача')),
     controls,
     body
   );

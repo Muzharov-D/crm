@@ -28,7 +28,7 @@ function hasOpenFollowUp(contactId, dealId) {
  * whether a nudge was shown, so callers can fall back to their plain
  * confirmation toast when it wasn't.
  */
-export function maybeNudgeNextStep({ contactId = null, dealId = null, title = '', lead = 'Done' }) {
+export function maybeNudgeNextStep({ contactId = null, dealId = null, title = '', lead = 'Выполнено' }) {
   if (store.settings.nextStepNudges === false) return false;
   if (!contactId && !dealId) return false;
   if (hasOpenFollowUp(contactId, dealId)) return false;
@@ -36,11 +36,11 @@ export function maybeNudgeNextStep({ contactId = null, dealId = null, title = ''
   const contact = store.contactById(contactId);
   if (!deal && !contact) return false;
   const name = deal ? deal.name : contact.name;
-  toast(`${lead} · no next step ${deal ? 'for' : 'with'} ${name}`, {
+  toast(`${lead} · нет следующего шага: ${name}`, {
     icon: 'followups',
     duration: 8000,
     action: {
-      label: 'Schedule',
+      label: 'Запланировать',
       onClick: () => openNextStepSheet({ contactId, dealId, title }),
     },
   });
@@ -51,8 +51,8 @@ export function maybeNudgeNextStep({ contactId = null, dealId = null, title = ''
 export function openNextStepSheet({ contactId = null, dealId = null, title = '' } = {}) {
   const contact = store.contactById(contactId);
   const deal = store.dealById(dealId);
-  const fallback = deal ? `Follow up on ${deal.name}`
-    : contact ? `Follow up with ${contact.name}` : 'Follow up';
+  const fallback = deal ? `Связаться по сделке «${deal.name}»`
+    : contact ? `Связаться: ${contact.name}` : 'Связаться';
   const titleInput = el('input.input', {
     type: 'text', id: 'next-step-title', value: title || fallback,
     maxlength: 200, autocomplete: 'off',
@@ -67,10 +67,10 @@ export function openNextStepSheet({ contactId = null, dealId = null, title = '' 
         contactId: contactId || deal?.contactId || null, dealId,
       });
     } catch {
-      toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+      toast('Не удалось сохранить. Проверьте связь', { icon: 'wifiOff' });
       return;
     }
-    toast(`Follow-up added · ${formatDate(due)}`, { icon: 'followups' });
+    toast(`Задача добавлена · ${formatDate(due)}`, { icon: 'followups' });
   };
 
   const option = (label, due) => el('button.settings-row', {
@@ -86,18 +86,18 @@ export function openNextStepSheet({ contactId = null, dealId = null, title = '' 
   );
 
   const modal = openModal({
-    title: 'Schedule the next one',
+    title: 'Запланировать следующий шаг',
     content: el('div', {},
       el('div.settings-body', {},
         el('div.field', {},
-          el('label.field-label', { for: 'next-step-title' }, 'What needs doing?'),
+          el('label.field-label', { for: 'next-step-title' }, 'Что нужно сделать?'),
           titleInput
         )
       ),
       el('div.settings-list', {},
-        option('In 3 days', addDays(today, 3)),
-        option('In a week', addDays(today, 7)),
-        option('In a month', addMonthsClamped(today, 1))
+        option('Через 3 дня', addDays(today, 3)),
+        option('Через неделю', addDays(today, 7)),
+        option('Через месяц', addMonthsClamped(today, 1))
       ),
       el('div.settings-body', {},
         el('button.btn.btn-ghost.btn-sm.btn-dashed', {
@@ -108,7 +108,7 @@ export function openNextStepSheet({ contactId = null, dealId = null, title = '' 
             const { openTaskForm } = await import('./forms.js');
             setTimeout(() => openTaskForm(null, { presets }), 120);
           },
-        }, ' Pick a date and time…')
+        }, ' Выбрать дату и время…')
       )
     ),
   });

@@ -18,13 +18,13 @@
  * Pure functions over plain objects; definitions live in `crm:settings:v1`.
  */
 
-import { uid } from './util.js';
+import { uid, countLabel } from './util.js';
 
 /** The lists that can carry views, with the words the UI uses for them. */
 export const VIEW_KINDS = [
-  { key: 'contacts', label: 'Leads', hash: '#/leads' },
-  { key: 'companies', label: 'Companies', hash: '#/companies' },
-  { key: 'deals', label: 'Deals', hash: '#/pipeline' },
+  { key: 'contacts', label: 'Контакты', hash: '#/leads' },
+  { key: 'companies', label: 'Компании', hash: '#/companies' },
+  { key: 'deals', label: 'Сделки', hash: '#/pipeline' },
 ];
 
 const KEYS = VIEW_KINDS.map((k) => k.key);
@@ -49,12 +49,12 @@ export const DEFAULT_DEAL_SORT = { key: 'updatedAt', dir: 'desc' };
  * words they clicked on.
  */
 export const DEAL_SORT_COLUMNS = [
-  { key: 'name', label: 'Deal' },
-  { key: 'link', label: 'Company / contact' },
-  { key: 'stage', label: 'Stage' },
-  { key: 'value', label: 'Value' },
-  { key: 'expectedClose', label: 'Expected close' },
-  { key: 'updatedAt', label: 'Last updated' },
+  { key: 'name', label: 'Сделка' },
+  { key: 'link', label: 'Компания / контакт' },
+  { key: 'stage', label: 'Этап' },
+  { key: 'value', label: 'Сумма' },
+  { key: 'expectedClose', label: 'Дата закрытия' },
+  { key: 'updatedAt', label: 'Обновлена' },
 ];
 
 /** A deal sort column's heading, or the raw key when nothing answers to it. */
@@ -196,7 +196,7 @@ export function matchingView(settings, kind, filters) {
  * A view's filters, minus anything the app no longer has, plus a plain
  * list of what was dropped:
  *
- *   { filters, dropped: ['the tag “vip”', 'a stage that was removed'] }
+ *   { filters, dropped: ['метка «vip»', 'удалённый этап'] }
  *
  * `context` supplies what currently exists: `tags` (names), `stages`
  * (ids), `fields` (ids). Anything absent from context isn't checked.
@@ -209,7 +209,7 @@ export function applyFilters(kind, raw, context = {}) {
     const known = new Set(context.tags.map((t) => String(t).toLowerCase()));
     const kept = filters.tags.filter((tag) => known.has(tag.toLowerCase()));
     for (const tag of filters.tags) {
-      if (!known.has(tag.toLowerCase())) dropped.push(`the tag “${tag}”`);
+      if (!known.has(tag.toLowerCase())) dropped.push(`метка «${tag}»`);
     }
     filters.tags = kept;
   }
@@ -219,7 +219,7 @@ export function applyFilters(kind, raw, context = {}) {
     const next = {};
     for (const [id, value] of Object.entries(filters.fields)) {
       if (known.has(id)) next[id] = value;
-      else dropped.push('a field that was removed');
+      else dropped.push('удалённое поле');
     }
     filters.fields = next;
   }
@@ -227,14 +227,14 @@ export function applyFilters(kind, raw, context = {}) {
   if (kind === 'deals' && Array.isArray(context.stages)) {
     const known = new Set([...context.stages, 'open', 'all']);
     if (filters.stage && !known.has(filters.stage)) {
-      dropped.push('a stage that was removed');
+      dropped.push('удалённый этап');
       filters.stage = 'open';
     }
   }
 
   if (kind === 'deals' && Array.isArray(context.sortKeys) && filters.sort) {
     if (!context.sortKeys.includes(filters.sort.key)) {
-      dropped.push('a sort column that no longer exists');
+      dropped.push('сортировка по удалённому столбцу');
       filters.sort = null;
     }
   }
@@ -261,17 +261,19 @@ export function describeFilters(kind, raw, {
 } = {}) {
   const f = normalizeFilters(kind, raw);
   const parts = [];
-  if (f.query) parts.push(`“${f.query}”`);
+  if (f.query) parts.push(`«${f.query}»`);
   if (kind === 'contacts' && f.status && f.status !== 'all') parts.push(statusLabel(f.status));
   if (kind === 'deals' && f.stage && f.stage !== 'open') parts.push(stageLabel(f.stage));
   if (kind === 'deals' && f.closeWindow && f.closeWindow !== 'any') {
     parts.push(windowLabel(f.closeWindow));
   }
-  if (f.tags.length) parts.push(f.tags.length === 1 ? `tag ${f.tags[0]}` : `${f.tags.length} tags`);
+  if (f.tags.length) {
+    parts.push(f.tags.length === 1 ? `метка ${f.tags[0]}` : countLabel(f.tags.length, ['метка', 'метки', 'меток']));
+  }
   const fields = Object.keys(f.fields).length;
-  if (fields) parts.push(fields === 1 ? '1 field' : `${fields} fields`);
-  if (kind === 'deals' && f.sort) parts.push(`sorted by ${sortLabel(f.sort.key)}`);
-  return parts.join(' · ') || 'no filters';
+  if (fields) parts.push(countLabel(fields, ['поле', 'поля', 'полей']));
+  if (kind === 'deals' && f.sort) parts.push(`сортировка: ${sortLabel(f.sort.key)}`);
+  return parts.join(' · ') || 'без фильтров';
 }
 
 /** Move a view within its list. Returns a new list. */

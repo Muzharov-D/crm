@@ -108,7 +108,9 @@ describe('values', () => {
     expect(coerceFieldValue(field({ type: 'checkbox' }), 'no')).toBe(false);
     expect(coerceFieldValue(field({ type: 'checkbox' }), 'maybe')).toBeUndefined();
     expect(coerceFieldValue(field({ type: 'text' }), 42)).toBe('42');
-    expect(coerceFieldValue(field({ type: 'text' }), true)).toBe('Yes');
+    expect(coerceFieldValue(field({ type: 'text' }), true)).toBe('Да');
+    expect(coerceFieldValue(field({ type: 'checkbox' }), 'Да')).toBe(true);
+    expect(coerceFieldValue(field({ type: 'checkbox' }), 'нет')).toBe(false);
     expect(coerceFieldValue(field({ type: 'number' }), null)).toBeNull();
   });
 
@@ -156,11 +158,11 @@ describe('retypeReport', () => {
 
 describe('display', () => {
   it('spells a value out for a page', () => {
-    expect(formatFieldValue(field({ type: 'checkbox' }), true)).toBe('Yes');
-    expect(formatFieldValue(field({ type: 'checkbox' }), false)).toBe('No');
-    expect(formatFieldValue(field({ type: 'number' }), 12500)).toBe('12,500');
+    expect(formatFieldValue(field({ type: 'checkbox' }), true)).toBe('Да');
+    expect(formatFieldValue(field({ type: 'checkbox' }), false)).toBe('Нет');
+    expect(formatFieldValue(field({ type: 'number' }), 12500)).toBe('12\u00a0500');
     expect(formatFieldValue(field({ type: 'date' }), '2026-09-30',
-      { formatDate: () => 'Sep 30' })).toBe('Sep 30');
+      { formatDate: () => '30 сен' })).toBe('30 сен');
     expect(formatFieldValue(field(), null)).toBe('');
   });
 
@@ -185,6 +187,7 @@ describe('filtering', () => {
     expect(filterOptionsFor(plan, records).map((o) => o.value))
       .toEqual(['Pro', 'Team', 'Legacy']);
     expect(filterOptionsFor(trial, records).map((o) => o.value)).toEqual(['yes', 'no']);
+    expect(filterOptionsFor(trial, records).map((o) => o.label)).toEqual(['Да', 'Нет']);
   });
 
   it('matches a value, and never matches a blank against a real filter', () => {

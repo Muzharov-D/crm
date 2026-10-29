@@ -17,16 +17,16 @@ import { timeAgo } from '../lib/util.js';
 
 /** The collections, in the words the user knows them by. */
 const KV_LABELS = {
-  'crm:settings:v1': 'Settings',
-  'crm:companies:v1': 'Companies',
-  'crm:contacts:v1': 'Leads',
-  'crm:deals:v1': 'Deals',
-  'crm:activities:v1': 'Activity',
-  'crm:tasks:v1': 'Follow-ups',
-  'crm:templates:v1': 'Email templates',
-  'crm:attachments:v1': 'Files',
-  'crm:trash:v1': 'Recently deleted',
-  'crm:backup:v1': 'Safety snapshot',
+  'crm:settings:v1': 'Настройки',
+  'crm:companies:v1': 'Компании',
+  'crm:contacts:v1': 'Контакты',
+  'crm:deals:v1': 'Сделки',
+  'crm:activities:v1': 'История',
+  'crm:tasks:v1': 'Задачи',
+  'crm:templates:v1': 'Шаблоны писем',
+  'crm:attachments:v1': 'Файлы',
+  'crm:trash:v1': 'Корзина',
+  'crm:backup:v1': 'Резервная копия',
 };
 
 export const kvLabel = (key) => KV_LABELS[key] || key;
@@ -48,15 +48,15 @@ export function offlineIndicator() {
     const off = offline || browserOffline();
     if (!off && !queued) return;
     const label = conflicts
-      ? `${conflicts} to review`
+      ? `Требуют решения: ${conflicts}`
       : queued
-        ? `${queued} waiting to sync`
-        : 'Offline';
+        ? `Ждут отправки: ${queued}`
+        : 'Нет связи';
     node.append(el('button.offline-pill', {
       type: 'button',
       className: `offline-pill${conflicts ? ' conflict' : off ? ' off' : ''}`,
       'aria-haspopup': 'dialog',
-      title: off ? 'Working offline - changes are saved on this device' : 'Changes waiting to reach the server',
+      title: off ? 'Нет связи — изменения сохраняются на этом устройстве' : 'Изменения ждут отправки на сервер',
       onclick: openOfflineSheet,
     },
       el('span', { html: icon(conflicts ? 'alert' : 'wifiOff', 14, 2.2), 'aria-hidden': 'true' }),
@@ -76,7 +76,7 @@ export async function openOfflineSheet() {
   const pending = await store.pendingWrites().catch(() => []);
   const body = el('div');
 
-  const syncBtn = el('button.btn.btn-primary', { type: 'button' }, 'Try again now');
+  const syncBtn = el('button.btn.btn-primary', { type: 'button' }, 'Повторить сейчас');
   syncBtn.addEventListener('click', async () => {
     syncBtn.disabled = true;
     const result = await store.syncNow();
@@ -91,17 +91,17 @@ export async function openOfflineSheet() {
   const blocked = pending.filter((row) => row.conflict).length;
   const note = () => {
     if (!pending.length) {
-      return 'Everything is on the server. Anything you change while offline is kept here and sent when you are back.';
+      return 'Все данные на сервере. Изменения, сделанные без связи, сохранятся здесь и отправятся, когда связь появится.';
     }
     if (!blocked) {
-      return 'These changes are saved on this device and will go to the server as soon as it answers.';
+      return 'Эти изменения сохранены на этом устройстве и отправятся на сервер, как только он ответит.';
     }
     if (blocked === pending.length) {
       return pending.length === 1
-        ? 'This change is saved on this device, and it is waiting on you: the cloud moved on while you were offline, so only one version of it can stand.'
-        : 'These changes are saved on this device, and each is waiting on you: the cloud moved on while you were offline, so only one version of each can stand.';
+        ? 'Это изменение сохранено на этом устройстве и ждёт вашего решения: пока не было связи, данные на сервере тоже изменились, и остаться может только одна версия.'
+        : 'Эти изменения сохранены на этом устройстве и ждут вашего решения: пока не было связи, данные на сервере тоже изменились, и для каждого остаться может только одна версия.';
     }
-    return 'These changes are saved on this device. Most go to the server as soon as it answers - the ones marked below need a decision from you first.';
+    return 'Эти изменения сохранены на этом устройстве. Большая часть отправится на сервер, как только он ответит, а по отмеченным ниже сначала нужно ваше решение.';
   };
 
   body.append(
@@ -111,23 +111,23 @@ export async function openOfflineSheet() {
       el('div.grow.min0', {},
         el('div.title', {}, kvLabel(row.key)),
         el('div.sub', {}, row.conflict
-          ? 'Another device changed this too - needs a decision'
-          : `Saved here ${timeAgo(row.at)}`)
+          ? 'Изменено и на другом устройстве — нужно решение'
+          : `Сохранено здесь ${timeAgo(row.at)}`)
       ),
       row.conflict && el('button.btn.btn-ghost.btn-sm', {
         type: 'button',
         onclick: () => { modal.close(); setTimeout(() => openConflictDialog(row.key), 120); },
-      }, ' Review')
+      }, ' Решить')
     ))),
     el('div.form-actions', {},
       el('div.grow'),
-      el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Close'),
+      el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Закрыть'),
       pending.length > 0 && syncBtn
     )
   );
 
   const modal = openModal({
-    title: pending.length ? 'Waiting to sync' : 'Everything is synced',
+    title: pending.length ? 'Ждут отправки' : 'Всё синхронизировано',
     content: body,
   });
   return modal;
@@ -141,11 +141,11 @@ export async function openOfflineSheet() {
  */
 export function openConflictDialog(key) {
   const modal = openModal({
-    title: `${kvLabel(key)} changed in two places`,
+    title: `«${kvLabel(key)}»: изменения в двух местах`,
     content: el('div', {},
       el('p.confirm-message', {},
-        `While this device was offline, ${kvLabel(key).toLowerCase()} also changed somewhere else - `
-        + 'another tab, another device. Only one version can stand.'),
+        `Пока на этом устройстве не было связи, раздел «${kvLabel(key)}» изменили где-то ещё — `
+        + 'в другой вкладке или на другом устройстве. Остаться может только одна версия.'),
       el('div.settings-list', {},
         el('button.settings-row', {
           type: 'button',
@@ -153,8 +153,8 @@ export function openConflictDialog(key) {
         },
           el('span.row-ic', { html: icon('upload', 20, 1.8) }),
           el('div.grow.min0', {},
-            el('div.title', {}, 'Keep what is on this device'),
-            el('div.sub', {}, 'Your offline changes are sent, replacing the other version')
+            el('div.title', {}, 'Оставить версию с этого устройства'),
+            el('div.sub', {}, 'Ваши изменения отправятся на сервер и заменят другую версию')
           ),
           el('span.row-chev', { html: icon('chevR', 18) })
         ),
@@ -164,8 +164,8 @@ export function openConflictDialog(key) {
         },
           el('span.row-ic', { html: icon('download', 20, 1.8) }),
           el('div.grow.min0', {},
-            el('div.title', {}, 'Take the other version'),
-            el('div.sub', {}, 'Your offline changes to this are discarded')
+            el('div.title', {}, 'Взять другую версию'),
+            el('div.sub', {}, 'Ваши изменения в этом разделе будут отброшены')
           ),
           el('span.row-chev', { html: icon('chevR', 18) })
         )
@@ -179,30 +179,30 @@ async function decide(key, choice, modal) {
   modal.close();
   const done = await store.resolveConflict(key, choice);
   if (!done) {
-    toast('Couldn’t reach the server. It is still waiting', { icon: 'wifiOff' });
+    toast('Сервер не отвечает. Изменение по-прежнему ждёт отправки', { icon: 'wifiOff' });
     return;
   }
   toast(choice === 'mine'
-    ? `${kvLabel(key)} on this device is now the version in the server`
-    : `${kvLabel(key)} taken from the server`, { icon: 'check' });
+    ? `«${kvLabel(key)}»: на сервере теперь версия с этого устройства`
+    : `«${kvLabel(key)}»: взята версия с сервера`, { icon: 'check' });
 }
 
 /** After a replay attempt: say what happened, once. */
 export function reportSync(result) {
   if (result.conflicts.length) {
     const key = result.conflicts[0];
-    toast(`${kvLabel(key)} changed in two places while you were offline`, {
+    toast(`«${kvLabel(key)}»: пока не было связи, данные изменились в двух местах`, {
       icon: 'alert',
       duration: 10000,
-      action: { label: 'Review', onClick: () => openConflictDialog(key) },
+      action: { label: 'Решить', onClick: () => openConflictDialog(key) },
     });
     return;
   }
   if (result.failed.length) {
-    toast('Still no connection. Your changes are safe on this device', { icon: 'wifiOff' });
+    toast('Связи по-прежнему нет. Изменения сохранены на этом устройстве', { icon: 'wifiOff' });
     return;
   }
-  if (result.synced.length) toast('Everything is synced', { icon: 'check' });
+  if (result.synced.length) toast('Всё синхронизировано', { icon: 'check' });
 }
 
 /**
@@ -218,10 +218,10 @@ export function startOfflineSync() {
     if (!queued) { told = false; return; }
     if (told || conflicts) return;
     told = true;
-    toast('Saved on this device · will sync when you’re back', {
+    toast('Сохранено на этом устройстве · отправится, когда появится связь', {
       icon: 'wifiOff',
       duration: 8000,
-      action: { label: 'Details', onClick: openOfflineSheet },
+      action: { label: 'Подробнее', onClick: openOfflineSheet },
     });
   });
 

@@ -14,7 +14,7 @@ import { toast } from './toast.js';
 import { store } from '../lib/store.js';
 import { wireForm } from './forms.js';
 import { requiredMark } from './bits.js';
-import { formatDate, todayISO } from '../lib/util.js';
+import { formatDate, todayISO, countLabel, plural } from '../lib/util.js';
 import {
   MAX_PLAYBOOKS, MAX_PLAYBOOK_STEPS, MAX_STEP_OFFSET, MAX_PLAYBOOK_NAME, MAX_STEP_TITLE,
   blankPlaybook, playbookSummary, playbookTasks, playbookForStage,
@@ -24,8 +24,8 @@ import { openStages } from '../lib/forecast.js';
 /* ---------- editor (Settings) ---------- */
 
 const templateOptions = () => [
-  { value: '', label: 'No email' },
-  ...[...store.templates].sort((a, b) => a.name.localeCompare(b.name))
+  { value: '', label: 'Без письма' },
+  ...[...store.templates].sort((a, b) => a.name.localeCompare(b.name, 'ru'))
     .map((t) => ({ value: t.id, label: t.name })),
 ];
 
@@ -39,13 +39,13 @@ export function openPlaybookForm(playbook = null, { onSaved = null } = {}) {
   const source = playbook || blankPlaybook();
   const name = el('input.input', {
     type: 'text', value: source.name, required: true, maxlength: MAX_PLAYBOOK_NAME,
-    id: 'pb-name', autocomplete: 'off', placeholder: 'e.g. Proposal chase',
+    id: 'pb-name', autocomplete: 'off', placeholder: 'Например, дожим КП',
   });
 
   const stages = openStages(store.stages());
   const trigger = select([
-    { value: '', label: 'Only when I ask' },
-    ...stages.map((s) => ({ value: s.id, label: `When a deal enters ${s.label}` })),
+    { value: '', label: 'Только вручную' },
+    ...stages.map((s) => ({ value: s.id, label: `Когда сделка переходит на этап «${s.label}»` })),
   ], source.trigger, { id: 'pb-trigger' });
 
   const stepsWrap = el('div.playbook-steps');
@@ -54,11 +54,11 @@ export function openPlaybookForm(playbook = null, { onSaved = null } = {}) {
     type: 'button',
     html: icon('plus', 14, 2.2),
     onclick: () => addRow({}, { focus: true }),
-  }, ' Add step');
+  }, ' Добавить шаг');
 
   function syncRows() {
     addBtn.disabled = rows.length >= MAX_PLAYBOOK_STEPS;
-    addBtn.title = addBtn.disabled ? `A playbook holds at most ${MAX_PLAYBOOK_STEPS} steps` : null;
+    addBtn.title = addBtn.disabled ? `В сценарии не больше ${countLabel(MAX_PLAYBOOK_STEPS, ['шага', 'шагов', 'шагов'])}` : null;
     for (const row of rows) row.remove.disabled = rows.length <= 1;
     renderPreview();
   }
@@ -66,20 +66,20 @@ export function openPlaybookForm(playbook = null, { onSaved = null } = {}) {
   function addRow(step = {}, { focus = false } = {}) {
     const title = el('input.input.playbook-title', {
       type: 'text', value: step.title || '', maxlength: MAX_STEP_TITLE,
-      autocomplete: 'off', placeholder: 'e.g. Send the recap email',
-      'aria-label': 'Step',
+      autocomplete: 'off', placeholder: 'Например, отправить письмо-итог',
+      'aria-label': 'Шаг',
     });
     const offset = el('input.input.prob-input.playbook-offset', {
       type: 'number', min: '0', max: String(MAX_STEP_OFFSET), step: '1', inputmode: 'numeric',
       value: String(step.offset ?? 0),
-      'aria-label': 'Days after the playbook is applied',
+      'aria-label': 'Через сколько дней после применения сценария',
     });
     const template = select(templateOptions(), step.templateId || '',
-      { 'aria-label': 'Email template for this step' });
+      { 'aria-label': 'Шаблон письма для этого шага' });
     const remove = el('button.icon-btn', {
       type: 'button',
       html: icon('x', 16, 2.2),
-      'aria-label': 'Remove this step',
+      'aria-label': 'Удалить шаг',
       onclick: () => {
         rows.splice(rows.indexOf(row), 1);
         node.remove();
@@ -90,7 +90,7 @@ export function openPlaybookForm(playbook = null, { onSaved = null } = {}) {
     const node = el('div.playbook-step', {},
       title,
       el('div.playbook-step-meta', {},
-        el('span.stage-prob-field', {}, offset, el('span.prob-unit', { 'aria-hidden': 'true' }, 'days')),
+        el('span.stage-prob-field', {}, offset, el('span.prob-unit', { 'aria-hidden': 'true' }, 'дн.')),
         template.wrap,
         remove
       )
@@ -118,11 +118,11 @@ export function openPlaybookForm(playbook = null, { onSaved = null } = {}) {
     clear(preview);
     const tasks = playbookTasks(read());
     if (!tasks.length) {
-      preview.append(el('p.field-hint', {}, 'Give each step a title to see the dates it would create.'));
+      preview.append(el('p.field-hint', {}, 'Назовите шаги, чтобы увидеть даты задач.'));
       return;
     }
     preview.append(
-      el('p.field-hint', {}, 'Applied today, this would book:'),
+      el('p.field-hint', {}, 'Если применить сегодня, появятся задачи:'),
       el('ul.playbook-dates', {}, tasks.map((t) =>
         el('li', {}, el('span.grow.min0', {}, t.title), el('span.playbook-date', {}, formatDate(t.due)))))
     );
@@ -132,17 +132,17 @@ export function openPlaybookForm(playbook = null, { onSaved = null } = {}) {
 
   const form = el('form.form', {},
     el('div.field', {},
-      el('label.field-label', { for: 'pb-name' }, 'Playbook name', requiredMark()), name),
+      el('label.field-label', { for: 'pb-name' }, 'Название сценария', requiredMark()), name),
     el('div.field', {},
-      el('label.field-label', {}, 'Steps'),
+      el('label.field-label', {}, 'Шаги'),
       stepsWrap,
       addBtn,
-      el('p.field-hint', {}, 'Days are counted from the day you apply the playbook. 0 means the same day.')
+      el('p.field-hint', {}, 'Дни считаются от дня применения сценария. 0 — в тот же день.')
     ),
     el('div.field', {},
-      el('label.field-label', { for: 'pb-trigger' }, 'Offer it automatically'),
+      el('label.field-label', { for: 'pb-trigger' }, 'Предлагать автоматически'),
       trigger.wrap,
-      el('p.field-hint', {}, 'A deal arriving in that stage offers this playbook - it always asks first, and only when nothing else is booked.')
+      el('p.field-hint', {}, 'Когда сделка переходит на этот этап, система предложит сценарий. Сначала всегда спросит и только если у сделки нет других задач.')
     ),
     preview,
     el('div.form-actions', {},
@@ -150,28 +150,28 @@ export function openPlaybookForm(playbook = null, { onSaved = null } = {}) {
         type: 'button',
         onclick: async () => {
           const ok = await confirmDialog({
-            title: `Delete “${playbook.name}”?`,
-            message: 'Follow-ups it already created stay exactly as they are.',
+            title: `Удалить «${playbook.name}»?`,
+            message: 'Задачи, которые сценарий уже создал, останутся без изменений.',
           });
           if (!ok) return;
           try {
             await store.setPlaybooks(store.playbooks().filter((p) => p.id !== playbook.id));
           } catch {
-            toast('Couldn’t delete. Check your connection', { icon: 'wifiOff' });
+            toast('Не удалось удалить. Проверьте подключение', { icon: 'wifiOff' });
             return;
           }
           modal.close();
-          toast('Playbook deleted', { icon: 'trash' });
+          toast('Сценарий удалён', { icon: 'trash' });
           onSaved?.(null);
         },
-      }, 'Delete'),
+      }, 'Удалить'),
       el('div.grow'),
-      el('button.btn.btn-primary', { type: 'submit' }, playbook ? 'Save changes' : 'Add playbook')
+      el('button.btn.btn-primary', { type: 'submit' }, playbook ? 'Сохранить' : 'Добавить сценарий')
     )
   );
 
   const modal = openModal({
-    title: playbook ? 'Edit playbook' : 'New playbook',
+    title: playbook ? 'Сценарий' : 'Новый сценарий',
     content: form,
     guardUnsaved: true,
   });
@@ -184,7 +184,7 @@ export function openPlaybookForm(playbook = null, { onSaved = null } = {}) {
     else list.push(next);
     const saved = await store.setPlaybooks(list.slice(0, MAX_PLAYBOOKS));
     modal.close();
-    toast(playbook ? 'Playbook updated' : 'Playbook added');
+    toast(playbook ? 'Сценарий сохранён' : 'Сценарий добавлен');
     onSaved?.(saved.find((p) => p.id === next.id) || null);
   });
   return modal;
@@ -211,26 +211,26 @@ export function openPlaybookPreview(playbook, { contactId = null, dealId = null,
     try {
       created = await store.applyPlaybook(playbook, { contactId, dealId });
     } catch {
-      toast('Couldn’t save. Check your connection', { icon: 'wifiOff' });
+      toast('Не удалось сохранить. Проверьте подключение', { icon: 'wifiOff' });
       return;
     }
     const n = created.length;
-    toast(`${n} follow-up${n === 1 ? '' : 's'} added`, {
+    toast(`${plural(n, ['Добавлена', 'Добавлено', 'Добавлено'])} ${countLabel(n, ['задача', 'задачи', 'задач'])}`, {
       icon: 'followups',
       action: {
-        label: 'Undo',
+        label: 'Отменить',
         onClick: () => store.undoAddedTasks(created.map((t) => t.id))
-          .catch(() => toast('Couldn’t undo. Check your connection', { icon: 'wifiOff' })),
+          .catch(() => toast('Не удалось отменить. Проверьте подключение', { icon: 'wifiOff' })),
       },
     });
   };
 
   const modal = openModal({
-    title: title || `Apply “${playbook.name}”`,
+    title: title || `Применить «${playbook.name}»`,
     content: el('div', {},
       el('p.settings-note.sheet-note', {}, tasks.length
-        ? `${tasks.length} follow-up${tasks.length === 1 ? '' : 's'}${who ? ` on ${who}` : ''}, dated from today:`
-        : 'This playbook has no steps yet. Add some in Settings.'),
+        ? `${countLabel(tasks.length, ['задача', 'задачи', 'задач'])}${who ? ` для «${who}»` : ''}, даты от сегодняшнего дня:`
+        : 'В сценарии пока нет шагов. Добавьте их в настройках.'),
       tasks.length > 0 && el('div.settings-body', {},
         el('ul.playbook-dates', {}, tasks.map((t) => el('li', {},
           el('span.grow.min0', {}, t.title),
@@ -239,9 +239,9 @@ export function openPlaybookPreview(playbook, { contactId = null, dealId = null,
       ),
       el('div.form-actions', {},
         el('div.grow'),
-        el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Not now'),
+        el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Не сейчас'),
         tasks.length > 0 && el('button.btn.btn-primary', { type: 'button', onclick: apply },
-          `Add ${tasks.length} follow-up${tasks.length === 1 ? '' : 's'}`)
+          `Добавить ${countLabel(tasks.length, ['задачу', 'задачи', 'задач'])}`)
       )
     ),
   });
@@ -254,12 +254,12 @@ export function openPlaybookPicker({ contactId = null, dealId = null } = {}) {
   const who = targetName({ contactId, dealId });
 
   const modal = openModal({
-    title: 'Apply playbook',
+    title: 'Применить сценарий',
     content: el('div', {},
       books.length
         ? el('div', {},
             el('p.settings-note.sheet-note', {},
-              who ? `The cadence you run, booked against ${who}.` : 'The cadence you run, booked from today.'),
+              who ? `Ваша обычная последовательность задач для «${who}».` : 'Ваша обычная последовательность задач от сегодняшнего дня.'),
             el('div.settings-list', {}, books.map((book) => el('button.settings-row', {
               type: 'button',
               onclick: () => {
@@ -276,7 +276,7 @@ export function openPlaybookPicker({ contactId = null, dealId = null } = {}) {
             )))
           )
         : el('p.settings-note.sheet-note', {},
-            'No playbooks yet. Save the follow-up cadence you run in Settings, and it appears here.')
+            'Сценариев пока нет. Сохраните обычную последовательность задач в настройках, и она появится здесь.')
     ),
   });
   return modal;
@@ -297,7 +297,7 @@ export function maybeOfferPlaybook(deal, stage) {
   openPlaybookPreview(book, {
     dealId: deal.id,
     contactId: deal.contactId,
-    title: `Apply “${book.name}”?`,
+    title: `Применить «${book.name}»?`,
   });
   return true;
 }
@@ -310,7 +310,7 @@ export function playbookButton({ contactId = null, dealId = null } = {}) {
     html: icon('listChecks', 14, 2),
     'aria-haspopup': 'dialog',
     onclick: () => openPlaybookPicker({ contactId, dealId }),
-  }, ' Playbook');
+  }, ' Сценарий');
 }
 
 export { MAX_PLAYBOOKS };

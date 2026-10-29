@@ -129,8 +129,8 @@ export function taskEvent(task, { contactName = '', dealName = '' } = {}) {
   const context = [contactName, dealName].filter(Boolean).join(' · ');
   return {
     uid: `crm-task-${task.id}@sales-crm.puter`,
-    summary: `Follow up: ${task.title}`,
-    description: context ? `${context}\nFrom your Sales CRM.` : 'From your Sales CRM.',
+    summary: `Задача: ${task.title}`,
+    description: context ? `${context}\nИз CRM для продаж.` : 'Из CRM для продаж.',
     date: task.due,
     time: task.dueTime || '',
     minutes: 30,
@@ -143,8 +143,8 @@ export function dealEvent(deal, { companyName = '', value = '' } = {}) {
   const parts = [value, companyName].filter(Boolean).join(' · ');
   return {
     uid: `crm-deal-${deal.id}@sales-crm.puter`,
-    summary: `Expected close: ${deal.name}`,
-    description: parts ? `${parts}\nFrom your Sales CRM.` : 'From your Sales CRM.',
+    summary: `Дата закрытия: ${deal.name}`,
+    description: parts ? `${parts}\nИз CRM для продаж.` : 'Из CRM для продаж.',
     date: deal.expectedClose,
   };
 }

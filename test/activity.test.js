@@ -61,8 +61,8 @@ describe('touch targets', () => {
 
   it('lists only the types with a target, in the app’s own order', () => {
     expect(typeTargets({ call: 8, meeting: 3 })).toEqual([
-      { type: 'meeting', label: 'Meeting', target: 3 },
-      { type: 'call', label: 'Call', target: 8 },
+      { type: 'meeting', label: 'Встреча', target: 3 },
+      { type: 'call', label: 'Звонок', target: 8 },
     ]);
   });
 });
@@ -105,8 +105,8 @@ describe('touchProgress', () => {
     const p = touchProgress(activities, { call: 8, meeting: 3 }, thursday);
     expect(p.target).toBe(11);
     expect(p.byType).toEqual([
-      { type: 'meeting', label: 'Meeting', target: 3, logged: 1, pct: 1 / 3 },
-      { type: 'call', label: 'Call', target: 8, logged: 2, pct: 0.25 },
+      { type: 'meeting', label: 'Встреча', target: 3, logged: 1, pct: 1 / 3 },
+      { type: 'call', label: 'Звонок', target: 8, logged: 2, pct: 0.25 },
     ]);
   });
 });

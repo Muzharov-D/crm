@@ -55,7 +55,7 @@ describe('checkReminders', () => {
       task({ id: 'c', due: '2026-08-09' }),
     ]);
     expect(checkReminders(s, at(9))).toBe(1);
-    expect(shown[0]).toMatchObject({ title: 'Follow-ups need you', body: '1 overdue · 1 due today' });
+    expect(shown[0]).toMatchObject({ title: 'Задачи ждут вас', body: '1 просроченная · 1 на сегодня' });
 
     // Same day again: already announced.
     expect(checkReminders(s, at(11))).toBe(0);
@@ -79,7 +79,7 @@ describe('checkReminders', () => {
     checkReminders(s, at(14, 0));
     expect(shown).toHaveLength(2);
     // The same clock the UI uses, not the stored 24-hour value.
-    expect(shown[1]).toMatchObject({ title: 'Call Mei', body: 'Due at 2pm' });
+    expect(shown[1]).toMatchObject({ title: 'Call Mei', body: 'Сегодня в 14:00' });
 
     checkReminders(s, at(15));
     expect(shown).toHaveLength(2);
@@ -89,7 +89,7 @@ describe('checkReminders', () => {
     const s = fakeStore([task({ due: '2026-08-03', dueTime: '14:00' })]);
     checkReminders(s, at(16));
     expect(shown).toHaveLength(1);
-    expect(shown[0].title).toBe('Follow-ups need you');
+    expect(shown[0].title).toBe('Задачи ждут вас');
   });
 
   it('does not dump a backlog of timed reminders at once', () => {

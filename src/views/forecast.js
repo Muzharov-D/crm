@@ -5,7 +5,7 @@ import {
   winRate, avgSalesCycle, isTerminalStage, stageVelocity, isOpen,
   closeReasonBreakdown, winRateBy, avgClosedValue, goalProgress, pipelineCoverage,
 } from '../lib/forecast.js';
-import { formatMonth, formatMoney, compactMoney } from '../lib/util.js';
+import { formatMonth, formatMoney, compactMoney, countLabel, plural } from '../lib/util.js';
 import { isRecurring } from '../lib/recurring.js';
 import { monthlyFlows, winRateTrend, salesCycleTrend } from '../lib/trends.js';
 import { funnelReport, FUNNEL_WINDOWS, matchesFunnelWindow } from '../lib/funnel.js';
@@ -16,6 +16,7 @@ import { funnelChart } from '../charts/funnel-chart.js';
 import { openDealForm } from '../ui/forms.js';
 
 const HORIZON = 6;
+const DEALS = ['сделка', 'сделки', 'сделок'];
 
 /** One side of the why-deals-close comparison: reasons ranked by count. */
 function reasonColumn(title, tone, breakdown, max, currency) {
@@ -24,7 +25,7 @@ function reasonColumn(title, tone, breakdown, max, currency) {
     el('h3.wl-col-title', {},
       el('span.stage-badge', { dataset: { stage: tone } },
         el('span.stage-dot', { 'aria-hidden': 'true' }), title),
-      el('span.wl-col-count', {}, `${total} with a reason`)
+      el('span.wl-col-count', {}, `с причиной: ${total}`)
     ),
     breakdown.rows.length
       ? el('div.stage-bars', {}, breakdown.rows.map((r) => el('div.wl-bar-row', {},
@@ -38,8 +39,8 @@ function reasonColumn(title, tone, breakdown, max, currency) {
             el('span.stage-bar-sub', {}, ` · ${compactMoney(r.value, currency)}`))
         )))
       : el('p.card-empty.flush', {}, breakdown.unrecorded
-          ? 'No reasons recorded yet.'
-          : `Nothing ${tone} yet.`)
+          ? 'Причины пока не указаны.'
+          : `${tone === 'won' ? 'Выигранных' : 'Проигранных'} сделок пока нет.`)
   );
 }
 
@@ -51,10 +52,10 @@ function rateTable(label, rows, currency) {
       el('table.data-table', {},
         el('thead', {}, el('tr', {},
           el('th', { scope: 'col' }, label),
-          el('th.num', { scope: 'col' }, 'Won'),
-          el('th.num', { scope: 'col' }, 'Lost'),
-          el('th.num', { scope: 'col' }, 'Win rate'),
-          el('th.num', { scope: 'col' }, 'Won value')
+          el('th.num', { scope: 'col' }, 'Выиграно'),
+          el('th.num', { scope: 'col' }, 'Проиграно'),
+          el('th.num', { scope: 'col' }, 'Доля выигранных'),
+          el('th.num', { scope: 'col' }, 'Сумма выигранных')
         )),
         el('tbody', {}, rows.map((r) => el('tr', {},
           el('th', { scope: 'row' }, r.key),
@@ -84,9 +85,9 @@ export function forecastView() {
     if (!store.deals.length) {
       body.append(emptyState({
         icon: 'chart',
-        title: 'Nothing to forecast yet',
-        message: 'Give each deal a value and an expected close date, and this page turns your pipeline into a month-by-month revenue forecast.',
-        action: el('button.btn.btn-primary', { onclick: () => openDealForm() }, 'Add a deal'),
+        title: 'Прогнозировать пока нечего',
+        message: 'Укажите у каждой сделки сумму и дату закрытия, и здесь появится помесячный прогноз выручки по воронке.',
+        action: el('button.btn.btn-primary', { onclick: () => openDealForm() }, 'Добавить сделку'),
       }));
       return;
     }
@@ -126,51 +127,51 @@ export function forecastView() {
     append(body, [
       el('div.stat-grid', { className: `stat-grid${coverage === null ? '' : ' wide'}` },
         statTile({
-          label: 'Weighted pipeline',
+          label: 'Взвешенная воронка',
           value: compactMoney(weighted, currency),
-          sub: 'value × stage probability',
+          sub: 'сумма × вероятность этапа',
         }),
         coverage !== null && statTile({
-          label: 'Goal coverage',
-          value: `${coverage}×`,
-          sub: `weighted vs ${compactMoney(goal.remaining, currency)} left this month`,
+          label: 'Покрытие плана',
+          value: `${String(coverage).replace('.', ',')}×`,
+          sub: `взвешенная к ${compactMoney(goal.remaining, currency)} до плана в этом месяце`,
         }),
         statTile({
-          label: 'Best case',
+          label: 'Максимум',
           value: compactMoney(pipelineValue(store.deals), currency),
-          sub: `${open.length} open deal${open.length === 1 ? '' : 's'}`,
+          sub: countLabel(open.length, ['открытая сделка', 'открытые сделки', 'открытых сделок']),
         }),
         statTile({
-          label: 'Win rate',
-          value: rate.rate === null ? 'n/a' : `${Math.round(rate.rate * 100)}%`,
-          sub: rate.rate === null ? 'no closed deals yet' : `${rate.won} won · ${rate.lost} lost`,
+          label: 'Доля выигранных',
+          value: rate.rate === null ? '—' : `${Math.round(rate.rate * 100)}%`,
+          sub: rate.rate === null ? 'закрытых сделок пока нет' : `выиграно ${rate.won} · проиграно ${rate.lost}`,
         }),
         statTile({
-          label: 'Sales cycle',
-          value: cycle === null ? 'n/a' : `${cycle}d`,
-          sub: cycle === null ? 'closes a deal to learn this' : 'average, created to won',
+          label: 'Цикл сделки',
+          value: cycle === null ? '—' : `${cycle} дн.`,
+          sub: cycle === null ? 'появится после первой выигранной сделки' : 'в среднем от создания до выигрыша',
         })
       ),
 
-      section(`Next ${HORIZON} months`, null,
+      section(`Ближайшие ${countLabel(HORIZON, ['месяц', 'месяца', 'месяцев'])}`, null,
         el('div.settings-body', {},
           forecastChart(rows, currency, { goal: goal.goal }),
           // Say it where the shape of the chart depends on it: a
           // subscription is not a spike in its close month.
           store.deals.some(isRecurring) && el('p.settings-note.mt-sm', {},
-            'Recurring deals are spread across the months they bill, not booked whole in the month they close.')
+            'Регулярные сделки распределены по месяцам оплаты, а не учтены целиком в месяце закрытия.')
         )
       ),
 
-      section('Month by month', null,
+      section('По месяцам', null,
         el('div.table-wrap', {},
           el('table.data-table', {},
             el('thead', {}, el('tr', {},
-              el('th', { scope: 'col' }, 'Month'),
-              el('th.num', { scope: 'col' }, 'Deals'),
-              el('th.num', { scope: 'col' }, 'Best case'),
-              el('th.num', { scope: 'col' }, 'Weighted'),
-              el('th.num', { scope: 'col' }, 'Won')
+              el('th', { scope: 'col' }, 'Месяц'),
+              el('th.num', { scope: 'col' }, 'Сделки'),
+              el('th.num', { scope: 'col' }, 'Максимум'),
+              el('th.num', { scope: 'col' }, 'Взвешенно'),
+              el('th.num', { scope: 'col' }, 'Выиграно')
             )),
             el('tbody', {}, rows.map((r) => el('tr', {},
               el('th', { scope: 'row' }, formatMonth(r.key)),
@@ -185,32 +186,32 @@ export function forecastView() {
 
       /* The trajectory: is the top of the funnel keeping up with the
          bottom? Visible months before it hits revenue. */
-      anyFlow && section('Pipeline trends · last 12 months', null,
+      anyFlow && section('Динамика воронки · последние 12 месяцев', null,
         el('div.settings-body', {},
           flowsChart(flows, currency),
           el('div.trend-minis', {},
             el('div', {},
-              el('h3.wl-col-title', {}, 'Win rate by close month'),
+              el('h3.wl-col-title', {}, 'Доля выигранных по месяцу закрытия'),
               miniTrend(rateTrend.map((r) => ({
                 key: r.key,
                 value: r.rate === null ? null : Math.round(r.rate * 100),
               })), {
                 format: (v) => `${v}%`,
-                series: 'Win rate',
-                ariaLabel: 'Win rate by close month',
+                series: 'Доля выигранных',
+                ariaLabel: 'Доля выигранных по месяцу закрытия',
               })
             ),
             el('div', {},
-              el('h3.wl-col-title', {}, 'Sales cycle by close month'),
+              el('h3.wl-col-title', {}, 'Цикл сделки по месяцу закрытия'),
               miniTrend(cycleTrend.map((r) => ({ key: r.key, value: r.days })), {
-                format: (v) => `${v}d`,
-                series: 'Created → won, average',
-                ariaLabel: 'Average sales cycle by close month',
+                format: (v) => `${v} дн.`,
+                series: 'От создания до выигрыша, в среднем',
+                ariaLabel: 'Средний цикл сделки по месяцу закрытия',
               })
             )
           ),
           el('p.settings-note.mt-sm', {},
-            'Added counts deals by the month they were created, whatever became of them; won, lost, win rate, and cycle length go by the month deals closed.')
+            '«Добавлено» считает сделки по месяцу создания, чем бы они ни закончились. Выигранные, проигранные, доля выигранных и длина цикла считаются по месяцу закрытия.')
         )
       ),
 
@@ -225,51 +226,51 @@ export function forecastView() {
         const anyJourney = funnel.rows.some((r) => r.entered > 0);
 
         const windowSelect = el('select.select', {
-          'aria-label': 'Which deals the funnel covers',
+          'aria-label': 'Какие сделки учитывает воронка',
           dataset: { focusKey: 'funnel-window' },
           onchange: keepingFocus((e) => { cohort = e.target.value; render(); }),
         }, FUNNEL_WINDOWS.map((w) =>
           el('option', { value: w.value, selected: w.value === cohort }, w.label)));
 
-        return section('Conversion',
+        return section('Конверсия',
           el('div.select-wrap.close-window', {}, windowSelect),
           el('div.settings-body', {},
             anyJourney
               ? el('div', {},
                   el('div.funnel-summary', {},
                     el('div.funnel-summary-item', {},
-                      el('span.stat-label', {}, 'Entry to won'),
+                      el('span.stat-label', {}, 'От входа до выигрыша'),
                       el('span.funnel-summary-value', {},
-                        funnel.totals.wonRate === null ? 'n/a'
+                        funnel.totals.wonRate === null ? '—'
                           : `${Math.round(funnel.totals.wonRate * 100)}%`),
                       el('span.stat-sub', {},
-                        `${funnel.totals.won} of ${funnel.totals.deals} deal${funnel.totals.deals === 1 ? '' : 's'} that entered`
-                        + (funnel.totals.open ? ` · ${funnel.totals.open} still open` : ''))
+                        `${funnel.totals.won} из ${countLabel(funnel.totals.deals, ['вошедшей сделки', 'вошедших сделок', 'вошедших сделок'])}`
+                        + (funnel.totals.open ? ` · ещё в работе: ${funnel.totals.open}` : ''))
                     ),
                     worst?.lostHere > 0 && el('div.funnel-summary-item', {},
-                      el('span.stat-label', {}, 'Most losses'),
+                      el('span.stat-label', {}, 'Больше всего потерь'),
                       el('span.funnel-summary-value', {}, worst.label),
                       el('span.stat-sub', {},
-                        `${worst.lostHere} deal${worst.lostHere === 1 ? '' : 's'} died here`
-                        + (worst.lossShare ? ` · ${Math.round(worst.lossShare * 100)}% of all losses` : ''))
+                        `${countLabel(worst.lostHere, DEALS)} ${plural(worst.lostHere, ['проиграна', 'проиграны', 'проиграно'])} на этом этапе`
+                        + (worst.lossShare ? ` · ${Math.round(worst.lossShare * 100)}% всех проигрышей` : ''))
                     )
                   ),
                   funnelChart(funnel.rows, stageList),
                   el('p.settings-note.mt-sm', {},
-                    'A deal counts as reaching a stage only if it was actually in it, and as advancing only if it later went further. ',
+                    'Сделка считается дошедшей до этапа, только если действительно на нём была, и прошедшей дальше, только если потом продвинулась. ',
                     funnel.untracked > 0
-                      ? `${funnel.untracked} deal${funnel.untracked === 1 ? '' : 's'} closed before stage tracking began and ${funnel.untracked === 1 ? 'is' : 'are'} left out rather than counted as instant conversions.`
-                      : 'Deals still in play are counted where they sit, not as losses.')
+                      ? `${countLabel(funnel.untracked, DEALS)} ${plural(funnel.untracked, ['закрыта', 'закрыты', 'закрыто'])} до начала учёта этапов и не ${plural(funnel.untracked, ['учитывается', 'учитываются', 'учитываются'])}, чтобы не выдавать их за мгновенную конверсию.`
+                      : 'Сделки в работе учитываются на текущем этапе, а не как проигранные.')
                 )
               : el('p.card-empty.flush', {}, cohort === 'all'
-                  ? 'No stage history yet. Move a deal through the board and this fills in.'
-                  : 'No deal entered the funnel in that period. Try a wider one.')
+                  ? 'Истории этапов пока нет. Передвиньте сделку по доске, и здесь появятся данные.'
+                  : 'За этот период в воронку не пришло ни одной сделки. Выберите период шире.')
           )
         );
       })(),
 
       /* How long each stage actually takes, from accumulated history. */
-      velocity.some((v) => v.days !== null) && section('Time in each stage', null,
+      velocity.some((v) => v.days !== null) && section('Время на этапах', null,
         el('div.settings-body', {},
           el('div.stage-bars', {}, velocity.map((v) => el('div.stage-bar-row', {},
             stageBadge(v.stage, stageList),
@@ -278,44 +279,44 @@ export function forecastView() {
                 style: { width: `${Math.max(2, (v.days / maxVelocity) * 100)}%` },
               })),
             el('span.stage-bar-value', {},
-              v.days === null ? '–' : `${v.days}d`,
+              v.days === null ? '–' : `${v.days} дн.`,
               el('span.stage-bar-sub', {}, v.count
-                ? ` · ${v.count} deal${v.count === 1 ? '' : 's'}`
-                : ' · no data yet'))
+                ? ` · ${countLabel(v.count, DEALS)}`
+                : ' · пока нет данных'))
           ))),
           el('p.settings-note.mt-sm', {},
-            'Average days a deal spent in each stage before moving on. Deals still sitting in a stage aren’t counted until they move.')
+            'Сколько дней в среднем сделка проводит на этапе, прежде чем перейти дальше. Сделки, которые ещё на этапе, учитываются после перехода.')
         )
       ),
 
       /* Win/loss analysis: only worth a section once something has closed. */
-      closed.length > 0 && section('Why deals close', null,
+      closed.length > 0 && section('Почему сделки закрываются', null,
         el('div.settings-body', {},
           el('div.wl-cols', {},
-            reasonColumn('Won', 'won', wonReasons, maxReason, currency),
-            reasonColumn('Lost', 'lost', lostReasons, maxReason, currency)
+            reasonColumn('Выигранные', 'won', wonReasons, maxReason, currency),
+            reasonColumn('Проигранные', 'lost', lostReasons, maxReason, currency)
           ),
           el('div.wl-averages', {},
             el('div.wl-average', {},
-              el('span.stat-label', {}, 'Average won'),
+              el('span.stat-label', {}, 'Средняя выигранная сделка'),
               el('span.wl-average-value', {}, averages.won === null ? '–' : formatMoney(averages.won, currency))),
             el('div.wl-average', {},
-              el('span.stat-label', {}, 'Average lost'),
+              el('span.stat-label', {}, 'Средняя проигранная сделка'),
               el('span.wl-average-value', {}, averages.lost === null ? '–' : formatMoney(averages.lost, currency)))
           ),
           (wonReasons.unrecorded + lostReasons.unrecorded) > 0 && el('p.settings-note.mt-sm', {},
-            `${wonReasons.unrecorded + lostReasons.unrecorded} closed deal${wonReasons.unrecorded + lostReasons.unrecorded === 1 ? '' : 's'} with no reason recorded. Add one from the deal page to sharpen this.`)
+            `Без причины: ${countLabel(wonReasons.unrecorded + lostReasons.unrecorded, ['закрытая сделка', 'закрытые сделки', 'закрытых сделок'])}. Укажите причину в карточке сделки, чтобы анализ был точнее.`)
         )
       ),
 
-      (bySource.length > 0 || byIndustry.length > 0) && section('Where wins come from', null,
+      (bySource.length > 0 || byIndustry.length > 0) && section('Откуда приходят выигрыши', null,
         el('div.settings-body', {},
-          bySource.length > 0 && rateTable('Lead source', bySource, currency),
-          byIndustry.length > 0 && rateTable('Company industry', byIndustry, currency)
+          bySource.length > 0 && rateTable('Источник контакта', bySource, currency),
+          byIndustry.length > 0 && rateTable('Отрасль компании', byIndustry, currency)
         )
       ),
 
-      stages.length > 0 && section('Where the weighted number comes from', null,
+      stages.length > 0 && section('Из чего складывается взвешенная сумма', null,
         el('div.settings-body', {},
           el('div.stage-bars', {}, stages.map((s) => el('div.stage-bar-row', {},
             stageBadge(s.stage, stageList),
@@ -323,10 +324,10 @@ export function forecastView() {
               el('div.stage-bar-fill', { style: { width: `${Math.max(2, (s.weighted / maxStage) * 100)}%` } })),
             el('span.stage-bar-value', {},
               `${compactMoney(s.weighted, currency)}`,
-              el('span.stage-bar-sub', {}, ` of ${compactMoney(s.value, currency)}`))
+              el('span.stage-bar-sub', {}, ` из ${compactMoney(s.value, currency)}`))
           ))),
           el('p.settings-note.mt-sm', {},
-            'Weights per stage can be tuned in Settings as you learn your real conversion rates.')
+            'Вероятность для каждого этапа можно настроить в «Настройках», когда станет понятна реальная конверсия.')
         )
       ),
     ]);
@@ -336,7 +337,7 @@ export function forecastView() {
   store.addEventListener('change', renderOnChange);
   render();
 
-  root.append(pageHead('Forecast'), body);
+  root.append(pageHead('Прогноз'), body);
   root.destroy = () => store.removeEventListener('change', renderOnChange);
   return root;
 }

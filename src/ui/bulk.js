@@ -14,6 +14,7 @@ import { openModal, confirmDialog } from './modal.js';
 import { toast } from './toast.js';
 import { store, TRASH_MAX } from '../lib/store.js';
 import { cleanTag } from '../lib/tags.js';
+import { countLabel } from '../lib/util.js';
 
 /**
  * Selection over row ids. `onChange` re-renders the view; shift-click
@@ -82,7 +83,7 @@ export function selectBox(selection, id, order, label) {
     type: 'button',
     role: 'checkbox',
     'aria-checked': String(selection.has(id)),
-    'aria-label': `Select ${label}`,
+    'aria-label': `Выбрать: ${label}`,
     // Found again by the record, not by its name: two leads may share one
     // (this app has a whole screen for that), and the rebuilt list would
     // hand the keyboard to the first of them - a box the user had not
@@ -116,11 +117,11 @@ export function selectableRow(box, row) {
  */
 export function bulkBar(selection, { total, order, actions }) {
   if (!selection.size) return null;
-  return el('div.bulk-bar', { role: 'toolbar', 'aria-label': 'Bulk actions' },
-    el('span.bulk-count', {}, `${selection.size} selected`),
+  return el('div.bulk-bar', { role: 'toolbar', 'aria-label': 'Массовые действия' },
+    el('span.bulk-count', {}, `Выбрано: ${selection.size}`),
     selection.size < total && el('button.btn-inline.bulk-all', {
       onclick: () => selection.selectAll(order),
-    }, `Select all ${total}`),
+    }, `Выбрать все (${total})`),
     el('span.bulk-sep', { 'aria-hidden': 'true' }),
     actions.map((a) => el(`button.btn.btn-ghost.btn-sm${a.danger ? '.btn-danger-ghost' : ''}`, {
       html: icon(a.icon, 14, 2),
@@ -128,7 +129,7 @@ export function bulkBar(selection, { total, order, actions }) {
     }, ` ${a.label}`)),
     el('button.icon-btn.bulk-clear', {
       html: icon('x', 16, 2.2),
-      'aria-label': 'Clear selection',
+      'aria-label': 'Снять выделение',
       onclick: () => selection.clear(),
     })
   );
@@ -156,8 +157,8 @@ export function pickSheet(title, options, onPick) {
 /** Tag picker for bulk tagging: existing tags one tap away, new ones typed. */
 export function openBulkTagSheet(onPick) {
   const input = el('input.input', {
-    type: 'text', placeholder: 'New or existing tag…', maxlength: 40,
-    autocomplete: 'off', 'aria-label': 'Tag name',
+    type: 'text', placeholder: 'Новая или существующая метка…', maxlength: 40,
+    autocomplete: 'off', 'aria-label': 'Метка',
   });
   const apply = (tag) => {
     const clean = cleanTag(tag);
@@ -173,12 +174,12 @@ export function openBulkTagSheet(onPick) {
   });
   const existing = store.allTags();
   const modal = openModal({
-    title: 'Add a tag',
+    title: 'Добавить метку',
     content: el('div', {},
       el('div.settings-body', {},
         el('div.snooze-pick', {},
           input,
-          el('button.btn.btn-primary', { type: 'button', onclick: () => apply(input.value) }, 'Add')
+          el('button.btn.btn-primary', { type: 'button', onclick: () => apply(input.value) }, 'Добавить')
         )
       ),
       existing.length > 0 && el('div.settings-list', {}, existing.map((t) =>
@@ -196,19 +197,19 @@ export function openBulkTagSheet(onPick) {
 }
 
 /** Shared bulk-delete confirm, honest about the trash cap. `noun` comes in
-    already pluralized ("leads", "companies"). */
+    already pluralized, in the accusative ("контакта", "сделок"). */
 export async function confirmBulkDelete(count, noun) {
   const overCap = count > TRASH_MAX;
   return confirmDialog({
-    title: `Delete ${count} ${noun}?`,
+    title: `Удалить ${count} ${noun}?`,
     message: overCap
-      ? `Recently deleted holds ${TRASH_MAX} records, so only the last ${TRASH_MAX} of these will be restorable - the rest are gone for good. Consider exporting first.`
-      : `Linked deals, history, and follow-ups stay, but lose their link. Everything goes to Recently deleted in Settings for 30 days.`,
-    confirmLabel: 'Delete',
+      ? `В корзине помещается ${countLabel(TRASH_MAX, ['элемент', 'элемента', 'элементов'])}, поэтому восстановить можно будет только последние ${TRASH_MAX}, остальные удалятся безвозвратно. Лучше сначала сделайте экспорт.`
+      : 'Связанные сделки, история и задачи останутся, но потеряют связь. Всё удалённое на 30 дней попадёт в корзину в настройках.',
+    confirmLabel: 'Удалить',
   });
 }
 
 /** One toast for a finished bulk action. */
 export function bulkToast(n, what, iconName = 'check') {
-  toast(`${what} on ${n} record${n === 1 ? '' : 's'}`, { icon: iconName });
+  toast(`${what}: ${n}`, { icon: iconName });
 }

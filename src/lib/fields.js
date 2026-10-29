@@ -21,9 +21,10 @@ import { uid, isValidISODate } from './util.js';
 
 /** The record types that can carry custom fields, in Settings order. */
 export const CUSTOM_KINDS = [
-  { key: 'contacts', label: 'Leads', one: 'lead', icon: 'users' },
-  { key: 'companies', label: 'Companies', one: 'company', icon: 'company' },
-  { key: 'deals', label: 'Deals', one: 'deal', icon: 'deal' },
+  // `forms` are the three Russian plural forms for countLabel/plural.
+  { key: 'contacts', label: 'Контакты', one: 'контакт', forms: ['контакт', 'контакта', 'контактов'], icon: 'users' },
+  { key: 'companies', label: 'Компании', one: 'компания', forms: ['компания', 'компании', 'компаний'], icon: 'company' },
+  { key: 'deals', label: 'Сделки', one: 'сделка', forms: ['сделка', 'сделки', 'сделок'], icon: 'deal' },
 ];
 
 const KIND_KEYS = CUSTOM_KINDS.map((k) => k.key);
@@ -33,12 +34,13 @@ const KIND_KEYS = CUSTOM_KINDS.map((k) => k.key);
  * anything richer (formulas, conditional visibility) is a different app.
  */
 export const FIELD_TYPES = [
-  // `noun` is how a sentence names the type: "a value that isn't a date".
-  { value: 'text', label: 'Text', noun: 'text' },
-  { value: 'number', label: 'Number', noun: 'a number' },
-  { value: 'date', label: 'Date', noun: 'a date' },
-  { value: 'select', label: 'Choice', noun: 'a choice', hasOptions: true },
-  { value: 'checkbox', label: 'Yes / no', noun: 'a yes or a no' },
+  // `noun` is how a sentence names the type, in the accusative:
+  // "значение не похоже на дату".
+  { value: 'text', label: 'Текст', noun: 'текст' },
+  { value: 'number', label: 'Число', noun: 'число' },
+  { value: 'date', label: 'Дата', noun: 'дату' },
+  { value: 'select', label: 'Список', noun: 'вариант из списка', hasOptions: true },
+  { value: 'checkbox', label: 'Да / нет', noun: '«да» или «нет»' },
 ];
 
 const TYPE_IDS = new Set(FIELD_TYPES.map((t) => t.value));
@@ -153,8 +155,8 @@ const numberOf = (value) => {
   return Number.isFinite(n) ? n : null;
 };
 
-const TRUE_WORDS = /^(y|yes|true|1|on|checked)$/i;
-const FALSE_WORDS = /^(n|no|false|0|off|unchecked)$/i;
+const TRUE_WORDS = /^(y|yes|true|1|on|checked|да)$/i;
+const FALSE_WORDS = /^(n|no|false|0|off|unchecked|нет)$/i;
 
 const boolOf = (value) => {
   if (typeof value === 'boolean') return value;
@@ -167,7 +169,7 @@ const boolOf = (value) => {
 };
 
 const textOf = (value) => {
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'boolean') return value ? 'Да' : 'Нет';
   if (typeof value === 'number') return String(value);
   return str(value).trim();
 };
@@ -275,9 +277,9 @@ export function retypeReport(records, field, nextType) {
 export function formatFieldValue(field, value, { formatDate = (v) => v } = {}) {
   if (isBlankValue(value)) return '';
   switch (field?.type) {
-    case 'checkbox': return value ? 'Yes' : 'No';
+    case 'checkbox': return value ? 'Да' : 'Нет';
     case 'date': return formatDate(value);
-    case 'number': return typeof value === 'number' ? value.toLocaleString('en-US') : textOf(value);
+    case 'number': return typeof value === 'number' ? value.toLocaleString('ru-RU') : textOf(value);
     default: return textOf(value);
   }
 }
@@ -298,7 +300,7 @@ export function filledFields(record, fields) {
  */
 export function filterOptionsFor(field, records = []) {
   if (field.type === 'checkbox') {
-    return [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }];
+    return [{ value: 'yes', label: 'Да' }, { value: 'no', label: 'Нет' }];
   }
   const seen = new Map();
   for (const option of field.options || []) seen.set(option.toLowerCase(), option);
@@ -362,6 +364,8 @@ export function fieldSignature(fields) {
 
 /** A fresh field, ready for the Settings editor. */
 export function blankField(taken = new Set()) {
-  const name = 'New field';
-  return { id: makeFieldId(`${name}-${uid().slice(0, 4)}`, taken), name, type: 'text' };
+  const name = 'Новое поле';
+  // The id stays latin: makeFieldId keeps only a-z0-9, and a Cyrillic name
+  // would leave nothing readable behind.
+  return { id: makeFieldId(`new-field-${uid().slice(0, 4)}`, taken), name, type: 'text' };
 }

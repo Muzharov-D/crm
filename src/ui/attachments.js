@@ -20,7 +20,7 @@ async function download(attachment) {
   try {
     blob = await readFile(attachment.path);
   } catch {
-    toast('Couldn’t fetch the file. Check your connection', { icon: 'wifiOff' });
+    toast('Не удалось получить файл. Проверьте подключение', { icon: 'wifiOff' });
     return;
   }
   const url = URL.createObjectURL(blob);
@@ -35,7 +35,7 @@ async function upload(owner, picker, button) {
   const file = picker.files?.[0];
   if (!file) return;
   if (file.size > MAX_FILE_BYTES) {
-    toast(`Files up to ${formatBytes(MAX_FILE_BYTES)}. This one is ${formatBytes(file.size)}`, { icon: 'alert' });
+    toast(`Размер файла — до ${formatBytes(MAX_FILE_BYTES)}. Этот весит ${formatBytes(file.size)}`, { icon: 'alert' });
     picker.value = '';
     return;
   }
@@ -44,16 +44,16 @@ async function upload(owner, picker, button) {
   // the whole label back, not just re-enable a button reading "Uploading…".
   const label = [...button.childNodes];
   button.disabled = true;
-  button.textContent = ' Uploading…';
+  button.textContent = ' Загрузка…';
   try {
     const path = await uploadFile(file);
     await store.addAttachment({
       name: file.name, path, size: file.size, type: file.type, ...owner,
     });
-    toast('File attached', { icon: 'paperclip' });
+    toast('Файл прикреплён', { icon: 'paperclip' });
   } catch (err) {
     console.error(err);
-    toast('Upload failed. Check your connection', { icon: 'wifiOff' });
+    toast('Не удалось загрузить. Проверьте подключение', { icon: 'wifiOff' });
   } finally {
     // The section re-renders on the store change; this button only
     // survives on the failure path, where it has to come back to life.
@@ -68,34 +68,34 @@ function attachmentRow(a) {
     el('span.attachment-ic', { html: icon('fileText', 17, 1.8), 'aria-hidden': 'true' }),
     el('button.attachment-name', {
       type: 'button',
-      title: `Download ${a.name}`,
+      title: `Скачать ${a.name}`,
       onclick: () => download(a),
-    }, a.name || 'Untitled file'),
+    }, a.name || 'Файл без названия'),
     el('span.attachment-sub', {},
       `${formatBytes(a.size)} · ${formatDate(todayISO(new Date(a.uploadedAt)))}`),
     el('button.icon-btn.row-edit', {
       html: icon('download', 15, 2),
-      'aria-label': `Download ${a.name}`,
+      'aria-label': `Скачать ${a.name}`,
       dataset: { focusKey: `file-download-${a.id}` },
       onclick: () => download(a),
     }),
     el('button.icon-btn.row-edit', {
       html: icon('trash', 15, 2),
-      'aria-label': `Delete attachment ${a.name}`,
+      'aria-label': `Удалить файл ${a.name}`,
       // Two files on one record may carry the same name, and the rebuilt
       // list would find the wrong one by label - on the button that
       // deletes it. Keyed by the attachment instead.
       dataset: { focusKey: `file-delete-${a.id}` },
       onclick: async () => {
         const ok = await confirmDialog({
-          title: 'Delete this file?',
-          message: 'It goes to Recently deleted for 30 days; the file itself is removed from the server when that runs out.',
+          title: 'Удалить файл?',
+          message: 'Он на 30 дней попадёт в корзину, а после этого будет удалён с сервера.',
         });
         if (!ok) return;
         try {
-          deletedToast('File deleted', await store.deleteAttachment(a.id));
+          deletedToast('Файл удалён', await store.deleteAttachment(a.id));
         } catch {
-          toast('Couldn’t delete. Check your connection', { icon: 'wifiOff' });
+          toast('Не удалось удалить. Проверьте подключение', { icon: 'wifiOff' });
         }
       },
     })
@@ -117,14 +117,14 @@ export function attachmentsSection(owner) {
   const addBtn = el('button.btn.btn-ghost.btn-sm', {
     html: icon('paperclip', 14, 2),
     onclick: () => picker.click(),
-  }, ' Attach');
+  }, ' Прикрепить');
   picker.addEventListener('change', () => upload(owner, picker, addBtn));
 
-  return section('Files', addBtn,
+  return section('Файлы', addBtn,
     picker,
     files.length
       ? el('div.attachment-list', {}, files.map(attachmentRow))
       : el('p.card-empty', {},
-          `Proposals, order forms, and pricing sheets, kept with the record on your own server. Up to ${formatBytes(MAX_FILE_BYTES)} each.`)
+          `КП, заявки и прайс-листы хранятся вместе с карточкой на вашем сервере. До ${formatBytes(MAX_FILE_BYTES)} на файл.`)
   );
 }

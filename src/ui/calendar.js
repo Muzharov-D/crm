@@ -7,13 +7,16 @@ import { store } from '../lib/store.js';
 import { rateText } from '../lib/recurring.js';
 import { buildCalendar, taskEvent, dealEvent } from '../lib/ics.js';
 import { isOpen } from '../lib/forecast.js';
-import { todayISO } from '../lib/util.js';
+import { todayISO, countLabel } from '../lib/util.js';
 import { downloadFile } from './download.js';
 import { toast } from './toast.js';
 
+/* Accents come off Latin letters only: stripping every combining mark
+   turned "й" into "и". Cyrillic stays in the name - the titles are Russian. */
 const slug = (text) => String(text).toLowerCase().normalize('NFD')
-  .replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-')
-  .replace(/^-+|-+$/g, '').slice(0, 40) || 'follow-up';
+  .replace(/([a-z])[\u0300-\u036f]+/g, '$1').normalize('NFC')
+  .replace(/[^a-z0-9а-яё]+/g, '-')
+  .replace(/^-+|-+$/g, '').slice(0, 40) || 'задача';
 
 /** Context lines so the event means something outside the CRM. */
 function taskContext(task) {
@@ -26,7 +29,7 @@ function taskContext(task) {
 export function downloadTaskICS(task) {
   downloadFile(`${slug(task.title)}.ics`,
     buildCalendar([taskEvent(task, taskContext(task))]), 'text/calendar');
-  toast('Calendar event downloaded', { icon: 'calendar' });
+  toast('Событие для календаря скачано', { icon: 'calendar' });
 }
 
 /**
@@ -45,9 +48,9 @@ export function downloadOpenICS() {
     }));
   }
   if (!events.length) {
-    toast('Nothing open to export', { icon: 'calendar' });
+    toast('Нет открытых задач и сделок для экспорта', { icon: 'calendar' });
     return;
   }
-  downloadFile(`crm-followups-${todayISO()}.ics`, buildCalendar(events), 'text/calendar');
-  toast(`${events.length} event${events.length === 1 ? '' : 's'} downloaded`, { icon: 'calendar' });
+  downloadFile(`crm-задачи-${todayISO()}.ics`, buildCalendar(events), 'text/calendar');
+  toast(`Скачано: ${countLabel(events.length, ['событие', 'события', 'событий'])}`, { icon: 'calendar' });
 }

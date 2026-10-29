@@ -81,7 +81,7 @@ describe('record → event', () => {
     const timed = taskEvent({ id: 't1', title: 'Send proposal', due: '2026-08-10', dueTime: '09:15' },
       { contactName: 'Mei', dealName: 'Acme deal' });
     expect(timed).toMatchObject({ time: '09:15', date: '2026-08-10', alarm: true });
-    expect(timed.summary).toBe('Follow up: Send proposal');
+    expect(timed.summary).toBe('Задача: Send proposal');
     expect(timed.description).toContain('Mei · Acme deal');
 
     const allDay = taskEvent({ id: 't2', title: 'Ping', due: '2026-08-10', dueTime: '' });
@@ -90,10 +90,11 @@ describe('record → event', () => {
 
   it('turns a deal close date into an all-day marker', () => {
     const e = dealEvent({ id: 'd1', name: 'Acme', expectedClose: '2026-09-01' },
-      { companyName: 'Acme Inc', value: '$5,000' });
-    expect(e).toMatchObject({ date: '2026-09-01', summary: 'Expected close: Acme' });
+      { companyName: 'Acme Inc', value: '5 000 ₽' });
+    expect(e).toMatchObject({ date: '2026-09-01', summary: 'Дата закрытия: Acme' });
     expect(e.time).toBeUndefined();
-    expect(e.description).toContain('$5,000 · Acme Inc');
+    expect(e.description).toContain('5 000 ₽ · Acme Inc');
+    expect(e.description).toContain('Из CRM для продаж.');
   });
 
   it('cannot be talked into a second event by a record id', () => {
@@ -117,7 +118,7 @@ describe('record → event', () => {
     })], now);
     const rows = text.replace(/\r\n /g, '').split('\r\n');
     expect(rows.some((l) => l.startsWith('URL:'))).toBe(false);
-    expect(text).toContain('SUMMARY:Expected close: Acme\\nURL:https://evil.example');
+    expect(text).toContain('SUMMARY:Дата закрытия: Acme\\nURL:https://evil.example');
   });
 
   it('produces a calendar a parser can walk', () => {
@@ -128,6 +129,6 @@ describe('record → event', () => {
     const rows = lines(text);
     expect(rows.filter((l) => l === 'BEGIN:VEVENT')).toHaveLength(2);
     expect(rows.filter((l) => l === 'END:VEVENT')).toHaveLength(2);
-    expect(text).toContain('SUMMARY:Follow up: A\\; with\\, chars');
+    expect(text).toContain('SUMMARY:Задача: A\\; with\\, chars');
   });
 });

@@ -19,28 +19,28 @@ import { avatar } from './bits.js';
 
 const KINDS = {
   contact: {
-    title: 'Merge leads',
+    title: 'Объединить контакты',
     fields: [
-      { key: 'name', label: 'Name' },
-      { key: 'title', label: 'Job title' },
-      { key: 'email', label: 'Email' },
-      { key: 'phone', label: 'Phone' },
-      { key: 'companyId', label: 'Company', display: (v) => store.companyById(v)?.name || '' },
-      { key: 'source', label: 'Source' },
-      { key: 'status', label: 'Status', display: (v) => CONTACT_STATUSES.find((s) => s.value === v)?.label || String(v || '') },
-      { key: 'notes', label: 'Notes' },
+      { key: 'name', label: 'Имя' },
+      { key: 'title', label: 'Должность' },
+      { key: 'email', label: 'Эл. почта' },
+      { key: 'phone', label: 'Телефон' },
+      { key: 'companyId', label: 'Компания', display: (v) => store.companyById(v)?.name || '' },
+      { key: 'source', label: 'Источник' },
+      { key: 'status', label: 'Статус', display: (v) => CONTACT_STATUSES.find((s) => s.value === v)?.label || String(v || '') },
+      { key: 'notes', label: 'Заметки' },
     ],
     sub: (c) => [c.title, store.companyById(c.companyId)?.name, c.email].filter(Boolean).join(' · '),
     merge: (survivorId, mergedId, patch) => store.mergeContacts(survivorId, mergedId, patch),
   },
   company: {
-    title: 'Merge companies',
+    title: 'Объединить компании',
     fields: [
-      { key: 'name', label: 'Name' },
-      { key: 'industry', label: 'Industry' },
-      { key: 'website', label: 'Website' },
-      { key: 'size', label: 'Company size' },
-      { key: 'notes', label: 'Notes' },
+      { key: 'name', label: 'Название' },
+      { key: 'industry', label: 'Отрасль' },
+      { key: 'website', label: 'Сайт' },
+      { key: 'size', label: 'Размер компании' },
+      { key: 'notes', label: 'Заметки' },
     ],
     sub: (c) => [c.industry, c.website].filter(Boolean).join(' · '),
     merge: (survivorId, mergedId, patch) => store.mergeCompanies(survivorId, mergedId, patch),
@@ -48,10 +48,10 @@ const KINDS = {
 };
 
 const REASON_LABELS = {
-  email: 'same email', name: 'same name', phone: 'same phone', domain: 'same domain',
+  email: 'та же почта', name: 'то же имя', phone: 'тот же телефон', domain: 'тот же домен',
 };
 
-const addedOn = (r) => `Added ${formatDate(todayISO(new Date(r.createdAt || Date.now())), { year: 'always' })}`;
+const addedOn = (r) => `Добавлено ${formatDate(todayISO(new Date(r.createdAt || Date.now())), { year: 'always' })}`;
 
 /* ---------- merge form ---------- */
 
@@ -104,9 +104,9 @@ export function openMergeForm(kind, a, b) {
         ? avatar(record.name)
         : el('span.avatar.square', { 'aria-hidden': 'true', html: icon('building', 18, 1.8) }),
       el('div.grow.min0', {},
-        el('div.title', {}, record.name || 'Untitled'),
+        el('div.title', {}, record.name || 'Без названия'),
         el('div.sub', {}, spec.sub(record) || addedOn(record)),
-        el('div.merge-keep', {}, record === survivor ? 'Kept · links move here' : 'Merged away · goes to trash')
+        el('div.merge-keep', {}, record === survivor ? 'Остаётся · связи перейдут сюда' : 'Объединяется · уйдёт в корзину')
       )
     );
 
@@ -129,15 +129,15 @@ export function openMergeForm(kind, a, b) {
 
     body.append(
       el('p.settings-note.sheet-note', {},
-        'Pick the record to keep. Deals, activities, and follow-ups from the other one move to it; the other record goes to Recently deleted for 30 days.'),
+        'Выберите, какую карточку оставить. Сделки, история и задачи второй перейдут к ней, а вторая карточка на 30 дней попадёт в корзину.'),
       el('div.merge-records', {}, card(a, b), card(b, a)),
       rows.length
         ? el('div.merge-conflicts', {},
-            el('h3.csv-preview-title', {}, 'Where they differ'),
+            el('h3.csv-preview-title', {}, 'Различия'),
             rows)
-        : el('p.settings-note', {}, 'No conflicting fields. Anything one record is missing fills in from the other.'),
+        : el('p.settings-note', {}, 'Противоречий нет. Пустые поля заполнятся из второй карточки.'),
       el('div.form-actions', {},
-        el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Cancel'),
+        el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Отмена'),
         el('div.grow'),
         el('button.btn.btn-primary', {
           type: 'button',
@@ -161,20 +161,20 @@ export function openMergeForm(kind, a, b) {
               entry = await spec.merge(survivor.id, merged.id, patch);
             } catch {
               btn.disabled = false;
-              toast('Couldn’t merge. Check your connection', { icon: 'wifiOff' });
+              toast('Не удалось объединить. Проверьте подключение', { icon: 'wifiOff' });
               return;
             }
             modal.close();
-            toast(`Merged into ${survivor.name}`, {
+            toast(`Объединено в «${survivor.name}»`, {
               icon: 'merge',
               action: entry && {
-                label: 'Undo',
+                label: 'Отменить',
                 onClick: () => store.restoreTrash(entry.id)
-                  .catch(() => toast('Couldn’t restore. Check your connection', { icon: 'wifiOff' })),
+                  .catch(() => toast('Не удалось восстановить. Проверьте подключение', { icon: 'wifiOff' })),
               },
             });
           },
-        }, 'Merge records')
+        }, 'Объединить')
       )
     );
 
@@ -197,7 +197,7 @@ export function openDuplicatesReview() {
     const line = (r) => el('div.dupe-line', {},
       kind === 'contact' ? avatar(r.name) : el('span.avatar.square', { 'aria-hidden': 'true', html: icon('building', 16, 1.8) }),
       el('div.grow.min0', {},
-        el('div.title', {}, r.name || 'Untitled'),
+        el('div.title', {}, r.name || 'Без названия'),
         el('div.sub', {}, spec.sub(r) || addedOn(r))
       )
     );
@@ -212,7 +212,7 @@ export function openDuplicatesReview() {
         html: icon('merge', 14, 2),
         dataset: { focusKey: `merge-${pair.a.id}-${pair.b.id}` },
         onclick: () => openMergeForm(kind, pair.a, pair.b),
-      }, ' Merge…')
+      }, ' Объединить…')
     );
   }
 
@@ -231,18 +231,18 @@ export function openDuplicatesReview() {
 
     if (!contactPairs.length && !companyPairs.length) {
       body.append(el('div.all-clear', { html: icon('check', 18, 2.4) },
-        el('span', {}, 'No possible duplicates. Every contact and company looks unique.')));
+        el('span', {}, 'Дублей не найдено. Все контакты и компании уникальны.')));
       return;
     }
     if (contactPairs.length) {
       body.append(
-        el('h3.csv-preview-title', {}, `Leads (${contactPairs.length})`),
+        el('h3.csv-preview-title', {}, `Контакты (${contactPairs.length})`),
         el('div.dupe-list', {}, contactPairs.map((p) => pairRow('contact', p)))
       );
     }
     if (companyPairs.length) {
       body.append(
-        el('h3.csv-preview-title', {}, `Companies (${companyPairs.length})`),
+        el('h3.csv-preview-title', {}, `Компании (${companyPairs.length})`),
         el('div.dupe-list', {}, companyPairs.map((p) => pairRow('company', p)))
       );
     }
@@ -258,12 +258,12 @@ export function openDuplicatesReview() {
   const onChange = () => render();
   store.addEventListener('change', onChange);
   return openModal({
-    title: 'Possible duplicates',
+    title: 'Возможные дубли',
     wide: true,
     onClose: () => store.removeEventListener('change', onChange),
     content: el('div', {},
       el('p.settings-note.sheet-note', {},
-        'Matched by identical email, name, or phone (leads) and name or website domain (companies), after normalizing case and punctuation.'),
+        'Совпадения по почте, имени или телефону (контакты) и по названию или домену сайта (компании) без учёта регистра и знаков препинания.'),
       body
     ),
   });

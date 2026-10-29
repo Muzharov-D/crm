@@ -103,10 +103,10 @@ export function isOpen(deal) {
 
 /** The categories the deal form offers, mapped to probabilities. */
 export const CONFIDENCE_LEVELS = [
-  { value: 0.9, label: 'Commit' },
-  { value: 0.7, label: 'Likely' },
-  { value: 0.25, label: 'Best case' },
-  { value: 0, label: 'Omit' },
+  { value: 0.9, label: 'Точно' },
+  { value: 0.7, label: 'Вероятно' },
+  { value: 0.25, label: 'Оптимистично' },
+  { value: 0, label: 'Не учитывать' },
 ];
 
 /** A well-formed confidence (clamped 0..1) or null - never NaN. */
@@ -116,7 +116,7 @@ export function normalizeConfidence(v) {
   return Number.isFinite(n) ? clamp01(n) : null;
 }
 
-/** "Commit · 90%" for a category value, "45%" for a custom one, null unset. */
+/** "Точно · 90%" for a category value, "45%" for a custom one, null unset. */
 export function confidenceLabel(confidence) {
   const c = normalizeConfidence(confidence);
   if (c === null) return null;
@@ -266,10 +266,10 @@ export function wonInMonth(deals, key = monthKey()) {
 
 /** The windows the pipeline filter offers, in display order. */
 export const CLOSE_WINDOWS = [
-  { value: 'any', label: 'Any close date' },
-  { value: 'month', label: 'Closing this month' },
-  { value: 'quarter', label: 'Closing this quarter' },
-  { value: 'overdue', label: 'Past its close date' },
+  { value: 'any', label: 'Любая дата закрытия' },
+  { value: 'month', label: 'Закрытие в этом месяце' },
+  { value: 'quarter', label: 'Закрытие в этом квартале' },
+  { value: 'overdue', label: 'Дата закрытия прошла' },
 ];
 
 /**
@@ -298,10 +298,10 @@ export function matchesCloseWindow(deal, window, today = new Date()) {
 
 /** Starter reasons. Free text lives in the note beside them. */
 export const WON_REASONS = [
-  'Referral strength', 'Product fit', 'Price', 'Relationship', 'Timing', 'Other',
+  'Рекомендация', 'Подошёл продукт', 'Цена', 'Отношения', 'Вовремя', 'Другое',
 ];
 export const LOST_REASONS = [
-  'Price', 'Competitor', 'Timing', 'No budget', 'Went silent', 'No fit', 'Other',
+  'Цена', 'Конкурент', 'Не вовремя', 'Нет бюджета', 'Пропал', 'Не подошло', 'Другое',
 ];
 
 export function reasonsForStage(stage) {

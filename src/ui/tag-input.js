@@ -20,9 +20,9 @@ export function tagInput(initial = []) {
   const listId = `tag-options-${++seq}`;
 
   const input = el('input.tag-input-field', {
-    type: 'text', list: listId, placeholder: tags.length ? '' : 'Add tags…',
+    type: 'text', list: listId, placeholder: tags.length ? '' : 'Добавить метки…',
     maxlength: MAX_TAG_LENGTH, autocomplete: 'off', spellcheck: false,
-    'aria-label': 'Add a tag',
+    'aria-label': 'Добавить метку',
   });
   const datalist = el('datalist', { id: listId });
   const box = el('div.tag-input', {
@@ -50,7 +50,7 @@ export function tagInput(initial = []) {
         el('button.tag-chip-x', {
           type: 'button',
           html: icon('x', 12, 2.4),
-          'aria-label': `Remove tag ${tag}`,
+          'aria-label': `Убрать метку ${tag}`,
           // Keep the press from blurring the text field: blur commits, and
           // the commit re-render tears this button out from under the
           // pointer before click can fire - the removal silently failed
@@ -64,7 +64,7 @@ export function tagInput(initial = []) {
         })
       ));
     }
-    input.placeholder = tags.length ? '' : 'Add tags…';
+    input.placeholder = tags.length ? '' : 'Добавить метки…';
     box.append(input, datalist);
     syncOptions();
     if (hadFocus) input.focus();
@@ -141,12 +141,12 @@ export function tagFilterControl(selected, onChange, kind = null) {
   // aria-label, in document order) then landed on this unfocusable div -
   // so picking a tag dropped the keyboard on the floor. FOCUS_KEY below is
   // the other half of that.
-  const wrap = el('div.tag-filter', { role: 'group', 'aria-label': 'Tag filters' });
+  const wrap = el('div.tag-filter', { role: 'group', 'aria-label': 'Фильтры по меткам' });
 
   for (const name of selected) {
     wrap.append(el('button.filter-chip.active.tag-filter-chip', {
       type: 'button',
-      'aria-label': `Stop filtering by tag ${name}`,
+      'aria-label': `Снять фильтр по метке ${name}`,
       onclick: () => onChange(selected.filter((s) => s !== name)),
     },
       el('span', { html: icon('tag', 12, 2), 'aria-hidden': 'true' }),
@@ -157,11 +157,11 @@ export function tagFilterControl(selected, onChange, kind = null) {
 
   if (options.length) {
     const select = el('select.select.tag-filter-select', {
-      'aria-label': 'Filter by tag',
+      'aria-label': 'Фильтр по метке',
       dataset: { focusKey: FOCUS_KEY },
       onchange: () => { if (select.value) onChange([...selected, select.value]); },
     },
-      el('option', { value: '', selected: true }, selected.length ? '+ Tag' : 'Any tag'),
+      el('option', { value: '', selected: true }, selected.length ? '+ Метка' : 'Любая метка'),
       options.map((t) => el('option', { value: t.name }, `${t.name} (${t.count})`))
     );
     wrap.append(el('div.select-wrap', {}, select));

@@ -20,11 +20,11 @@
  * every deal can be read against the same handful.
  */
 export const DEAL_ROLES = [
-  { value: 'champion', label: 'Champion', hint: 'Pushing this internally' },
-  { value: 'decision-maker', label: 'Decision maker', hint: 'Signs it off' },
-  { value: 'influencer', label: 'Influencer', hint: 'Has a say' },
-  { value: 'blocker', label: 'Blocker', hint: 'Can stop it' },
-  { value: 'other', label: 'Other' },
+  { value: 'champion', label: 'Сторонник', hint: 'Продвигает сделку внутри компании' },
+  { value: 'decision-maker', label: 'ЛПР', hint: 'Принимает решение и подписывает' },
+  { value: 'influencer', label: 'Влияет на решение', hint: 'К его мнению прислушиваются' },
+  { value: 'blocker', label: 'Противник', hint: 'Может остановить сделку' },
+  { value: 'other', label: 'Другое' },
 ];
 
 const ROLE_IDS = new Set(DEAL_ROLES.map((r) => r.value));

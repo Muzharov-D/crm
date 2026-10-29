@@ -9,7 +9,7 @@ import { recurringSummary, pipelineMRR } from '../lib/recurring.js';
 import { touchProgress } from '../lib/activity.js';
 import { goingCold, noNextStep, noDecisionMaker } from '../lib/attention.js';
 import {
-  todayISO, monthKey, shiftMonthKey, compactMoney, formatMonth, sinceLabel,
+  todayISO, monthKey, shiftMonthKey, compactMoney, sinceLabel, countLabel,
 } from '../lib/util.js';
 import {
   pageHead, emptyState, statTile, taskRow, activityRow, section, stageBadge, avatar,
@@ -20,12 +20,24 @@ import { openOnboarding } from '../ui/onboarding.js';
 /** Rows the attention list shows before it says how many it is holding back. */
 const ATTENTION_MAX = 6;
 
+/* Full month names for the won tile: "Выиграно в октябре", "+12 тыс. ₽ к сентябрю". */
+const MONTHS_IN = ['январе', 'феврале', 'марте', 'апреле', 'мае', 'июне',
+  'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре'];
+const MONTHS_TO = ['январю', 'февралю', 'марту', 'апрелю', 'маю', 'июню',
+  'июлю', 'августу', 'сентябрю', 'октябрю', 'ноябрю', 'декабрю'];
+
+/** A YYYY-MM key in one of the case tables above, with the year only outside the current one. */
+function monthIn(key, forms) {
+  const [y, m] = key.split('-').map(Number);
+  return `${forms[m - 1]}${y !== new Date().getFullYear() ? ` ${y}` : ''}`;
+}
+
 function greeting() {
   const h = new Date().getHours();
-  if (h < 5) return 'Working late';
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (h < 5) return 'Доброй ночи';
+  if (h < 12) return 'Доброе утро';
+  if (h < 18) return 'Добрый день';
+  return 'Добрый вечер';
 }
 
 /** One drifting lead, with the two actions that revive it. */
@@ -35,21 +47,21 @@ function coldRow({ contact, lastAt }) {
     el('a.grow.min0', { href: `#/leads?id=${contact.id}` },
       el('div.person-name', {}, contact.name),
       el('div.person-sub', {}, lastAt
-        ? `Last touch ${sinceLabel(lastAt).text}`
-        : `No contact logged · added ${sinceLabel(todayISO(new Date(contact.createdAt))).text}`)
+        ? `Последнее касание ${sinceLabel(lastAt).text}`
+        : `Записей нет · добавлен ${sinceLabel(todayISO(new Date(contact.createdAt))).text}`)
     ),
     el('button.icon-btn', {
       html: icon('video', 17, 2),
-      'aria-label': `Log an activity with ${contact.name}`,
-      title: 'Log activity',
+      'aria-label': `Записать в историю: ${contact.name}`,
+      title: 'Записать в историю',
       onclick: () => openActivityForm(null, {
         presets: { contactId: contact.id, companyId: contact.companyId },
       }),
     }),
     el('button.icon-btn', {
       html: icon('followups', 17, 2),
-      'aria-label': `Add a follow-up for ${contact.name}`,
-      title: 'Add follow-up',
+      'aria-label': `Добавить задачу: ${contact.name}`,
+      title: 'Добавить задачу',
       onclick: () => openTaskForm(null, { presets: { contactId: contact.id } }),
     })
   );
@@ -68,11 +80,11 @@ export function dashboardView() {
     if (!hasAnything) {
       body.append(emptyState({
         icon: 'dashboard',
-        title: 'Let’s get you selling',
-        message: 'Add the people you’re talking to and the deals in play, and this page becomes your morning briefing: what’s due, what moved, and what the pipeline is worth.',
+        title: 'Начнём продавать',
+        message: 'Добавьте людей, с которыми ведёте переговоры, и сделки в работе — и эта страница станет утренней сводкой: что на сегодня, что сдвинулось и сколько стоит воронка.',
         action: el('div.empty-actions', {},
-          el('button.btn.btn-primary', { onclick: () => openContactForm() }, 'Add a lead'),
-          el('button.btn.btn-ghost', { onclick: openOnboarding }, 'Show me around')
+          el('button.btn.btn-primary', { onclick: () => openContactForm() }, 'Добавить контакт'),
+          el('button.btn.btn-ghost', { onclick: openOnboarding }, 'Показать, как всё устроено')
         ),
       }));
       return;
@@ -121,7 +133,7 @@ export function dashboardView() {
        January, where last month really is a different one - and dropping it
        the rest of the time keeps the line off a second row on a phone. */
     const delta = wonPrev > 0
-      ? { good: wonNow >= wonPrev, text: `${wonNow >= wonPrev ? '+' : '-'}${compactMoney(Math.abs(wonNow - wonPrev), currency)} vs ${formatMonth(prevMonth, { year: 'auto' })}` }
+      ? { good: wonNow >= wonPrev, text: `${wonNow >= wonPrev ? '+' : '-'}${compactMoney(Math.abs(wonNow - wonPrev), currency)} к ${monthIn(prevMonth, MONTHS_TO)}` }
       : null;
 
     const stages = stageSummary(open, overrides, stageList).filter((s) => !isTerminalStage(s.stage));
@@ -132,90 +144,90 @@ export function dashboardView() {
         className: `stat-grid${showRecurring || touches.pace ? ' wide' : ''}`,
       },
         statTile({
-          label: 'Open pipeline',
+          label: 'В воронке',
           value: compactMoney(pipelineValue(store.deals), currency),
-          sub: `${open.length} deal${open.length === 1 ? '' : 's'} in play`,
+          sub: `${countLabel(open.length, ['сделка', 'сделки', 'сделок'])} в работе`,
         }),
         // The unit lives in the label, not the value: a "/mo" suffix on the
         // number is the character that tipped "$3,000/mo" into an ellipsis
         // in a phone-width tile.
         showRecurring && statTile({
-          label: 'MRR',
+          label: 'Выручка в месяц',
           value: compactMoney(recurring.mrr, currency),
           sub: recurring.count
-            ? `${compactMoney(recurring.arr, currency)} ARR · ${recurring.count} contract${recurring.count === 1 ? '' : 's'}`
-            : `${compactMoney(openRecurring.mrr, currency)}/mo still in open deals`,
+            ? `${compactMoney(recurring.arr, currency)} в год · ${countLabel(recurring.count, ['договор', 'договора', 'договоров'])}`
+            : `в открытых сделках: ${compactMoney(openRecurring.mrr, currency)} в месяц`,
         }),
         statTile({
-          label: 'Weighted forecast',
+          label: 'Взвешенный прогноз',
           value: compactMoney(weightedPipeline(store.deals, overrides, stageList), currency),
-          sub: 'probability-adjusted',
+          sub: 'с учётом вероятности',
         }),
         goal.pace
           // With a goal set, the won tile answers "against what?" - amount,
           // share of target, and whether that share is ahead of the calendar.
           ? statTile({
-              label: `Won in ${formatMonth(thisMonth, { year: 'auto' })}`,
+              label: `Выиграно в ${monthIn(thisMonth, MONTHS_IN)}`,
               value: compactMoney(wonNow, currency),
               progress: {
                 pct: goal.pct,
                 tone: goal.pace === 'met' ? 'good' : goal.pace === 'behind' ? 'warn' : '',
-                label: `${Math.round(goal.pct * 100)}% of the ${compactMoney(goal.goal, currency)} goal`,
+                label: `${Math.round(goal.pct * 100)}% плана ${compactMoney(goal.goal, currency)}`,
               },
               sub: el('span', {},
-                `${Math.round(goal.pct * 100)}% of ${compactMoney(goal.goal, currency)} · `,
+                `${Math.round(goal.pct * 100)}% из ${compactMoney(goal.goal, currency)} · `,
                 el('span', {
                   className: `stat-pace ${goal.pace === 'behind' ? 'warn' : 'good'}`,
-                }, goal.pace === 'met' ? 'goal met'
-                  : goal.pace === 'on-track' ? 'on track'
-                  : `${compactMoney(goal.gap, currency)} behind pace`)
+                }, goal.pace === 'met' ? 'план выполнен'
+                  : goal.pace === 'on-track' ? 'в графике'
+                  : `отставание ${compactMoney(goal.gap, currency)}`)
               ),
             })
           : statTile({
-              label: `Won in ${formatMonth(thisMonth, { year: 'auto' })}`,
+              label: `Выиграно в ${monthIn(thisMonth, MONTHS_IN)}`,
               value: compactMoney(wonNow, currency),
               delta,
-              sub: delta ? null : 'closed this month',
+              sub: delta ? null : 'закрыто в этом месяце',
             }),
         statTile({
-          label: 'Win rate',
-          value: rate.rate === null ? 'n/a' : `${Math.round(rate.rate * 100)}%`,
-          sub: rate.rate === null ? 'no closed deals yet' : `over ${rate.won + rate.lost} closed`,
+          label: 'Доля выигранных',
+          value: rate.rate === null ? '—' : `${Math.round(rate.rate * 100)}%`,
+          sub: rate.rate === null ? 'закрытых сделок пока нет' : `из ${countLabel(rate.won + rate.lost, ['закрытой', 'закрытых', 'закрытых'])}`,
         }),
         touches.pace && statTile({
-          label: 'Touches this week',
-          value: `${touches.logged} of ${touches.target}`,
+          label: 'Касаний за неделю',
+          value: `${touches.logged} из ${touches.target}`,
           progress: {
             pct: touches.pct,
             tone: touches.pace === 'met' ? 'good' : touches.pace === 'behind' ? 'warn' : '',
-            label: `${touches.logged} of ${touches.target} logged`,
+            label: `записано ${touches.logged} из ${touches.target}`,
           },
           // No link in the sub: at six tiles the line is narrow, and
           // "activity log" wrapped onto a row of its own for a
           // destination the nav already offers.
           sub: el('span', {
             className: `stat-pace ${touches.pace === 'behind' ? 'warn' : 'good'}`,
-          }, touches.pace === 'met' ? 'target met'
-            : touches.pace === 'on-track' ? 'on track'
-            : `${touches.gap} behind pace`),
+          }, touches.pace === 'met' ? 'план выполнен'
+            : touches.pace === 'on-track' ? 'в графике'
+            : `отставание ${touches.gap}`),
         })
       ),
 
-      section('Needs attention',
-        el('a.btn.btn-ghost.btn-sm', { href: '#/followups' }, 'All follow-ups'),
+      section('Требует внимания',
+        el('a.btn.btn-ghost.btn-sm', { href: '#/followups' }, 'Все задачи'),
         needsAttention.length
           ? el('div.task-list', {}, needsAttention.slice(0, ATTENTION_MAX).map((t) =>
               taskRow(t, { onEdit: (task) => openTaskForm(task) })))
           : el('div.all-clear', { html: icon('check', 18, 2.4) },
-              el('span', {}, 'Nothing overdue or due today.')),
+              el('span', {}, 'Нет просроченных задач и задач на сегодня.')),
         // The cap keeps this page scannable, but it must not read as the
         // whole answer. Follow-ups come soonest-first, so a founder ten
         // days behind saw the ten oldest and nothing else - today's work
         // included - under a heading that claims to be what needs them now.
         needsAttention.length > ATTENTION_MAX && el('div.list-more-note', {},
-          `${needsAttention.length - ATTENTION_MAX} more overdue or due today`),
+          `Ещё ${needsAttention.length - ATTENTION_MAX}: просроченные и на сегодня`),
         upcoming.length > 0 && el('div.upnext', {},
-          el('span.upnext-label', {}, 'Up next'),
+          el('span.upnext-label', {}, 'Ближайшие'),
           el('div.task-list', {}, upcoming.map((t) => taskRow(t, { onEdit: (task) => openTaskForm(task) })))
         ),
         /* Deals nobody has moved in a while: the other half of "what needs
@@ -223,66 +235,66 @@ export function dashboardView() {
         /* Who signs? A deal can look busy - calls logged, follow-ups
            booked - while nobody has named the person who can say yes. */
         undecided.length > 0 && el('div.upnext', {},
-          el('span.upnext-label', {}, 'No decision maker named'),
+          el('span.upnext-label', {}, 'Не указано, кто принимает решение'),
           el('div.deal-list.flush', {}, undecided.map(({ deal }) =>
             el('div.deal-row', {},
               el('a.grow.min0', { href: `#/pipeline?id=${deal.id}` },
                 el('div.deal-row-name', {}, deal.name),
                 el('div.person-sub', {},
                   store.companyById(deal.companyId)?.name
-                  || store.contactById(deal.contactId)?.name || 'No linked record')
+                  || store.contactById(deal.contactId)?.name || 'Без привязки')
               ),
               el('button.btn.btn-ghost.btn-sm', {
                 html: icon('userPlus', 14, 2),
                 onclick: () => openDealForm(deal),
-              }, ' Add')
+              }, ' Добавить')
             )))
         ),
         stalled.length > 0 && el('div.upnext', {},
-          el('span.upnext-label', {}, 'Stalled deals'),
+          el('span.upnext-label', {}, 'Зависшие сделки'),
           el('div.deal-list.flush', {}, stalled.map((d) =>
             el('a.deal-row', { href: `#/pipeline?id=${d.id}` },
               el('div.grow.min0', {},
                 el('div.deal-row-name', {}, d.name),
                 el('div.person-sub', {},
                   store.companyById(d.companyId)?.name
-                  || store.contactById(d.contactId)?.name || 'No linked record')
+                  || store.contactById(d.contactId)?.name || 'Без привязки')
               ),
               el('span.age-pill', { dataset: { tone: 'stalled' } },
                 el('span', { html: icon('clock', 12, 2.2), 'aria-hidden': 'true' }),
-                `${daysInStage(d)}d in ${stageList.find((s) => s.id === d.stage)?.label || d.stage}`)
+                `${daysInStage(d)} дн. · ${stageList.find((s) => s.id === d.stage)?.label || d.stage}`)
             )))
         )
       ),
 
       /* Going cold: the risk nobody scheduled. Needs attention covers what
          you promised to do; this covers what you forgot to. */
-      (cold.length > 0 || nextless.length > 0) && section('Going cold',
-        el('a.btn.btn-ghost.btn-sm', { href: '#/leads' }, 'All leads'),
+      (cold.length > 0 || nextless.length > 0) && section('Остывают',
+        el('a.btn.btn-ghost.btn-sm', { href: '#/leads' }, 'Все контакты'),
         cold.length > 0 && el('div.cold-list', {}, cold.map((r) => coldRow(r))),
         nextless.length > 0 && el('div.upnext', {},
-          el('span.upnext-label', {}, 'Open deals with no next step'),
+          el('span.upnext-label', {}, 'Открытые сделки без следующего шага'),
           el('div.deal-list.flush', {}, nextless.map((r) =>
             el('div.deal-row', {},
               el('a.grow.min0', { href: `#/pipeline?id=${r.deal.id}` },
                 el('div.deal-row-name', {}, r.deal.name),
                 el('div.person-sub', {}, r.lastAt
-                  ? `Last touch ${sinceLabel(r.lastAt).text} · no follow-up scheduled`
-                  : 'Nothing logged, nothing scheduled')
+                  ? `Последнее касание ${sinceLabel(r.lastAt).text} · задач нет`
+                  : 'Ни записей, ни задач')
               ),
               el('button.btn.btn-ghost.btn-sm', {
                 html: icon('followups', 14, 2),
                 onclick: () => openTaskForm(null, {
                   presets: { dealId: r.deal.id, contactId: r.deal.contactId },
                 }),
-              }, ' Follow up')
+              }, ' Задача')
             )))
         )
       ),
 
       el('div.two-col', {},
-        section('Pipeline at a glance',
-          el('a.btn.btn-ghost.btn-sm', { href: '#/pipeline' }, 'Open board'),
+        section('Воронка по этапам',
+          el('a.btn.btn-ghost.btn-sm', { href: '#/pipeline' }, 'Открыть доску'),
           open.length
             ? el('div.stage-bars', {}, stages.map((s) => el('div.stage-bar-row', {},
                 stageBadge(s.stage),
@@ -294,18 +306,18 @@ export function dashboardView() {
                   s.count ? compactMoney(s.value, currency) : '–',
                   el('span.stage-bar-sub', {}, ` · ${s.count}`))
               )))
-            : el('p.card-empty', {}, 'No open deals. ',
-                el('button.btn-inline', { onclick: () => openDealForm() }, 'Add one'), '.')
+            : el('p.card-empty', {}, 'Открытых сделок нет. ',
+                el('button.btn-inline', { onclick: () => openDealForm() }, 'Добавить'), '.')
         ),
-        section('Recent activity',
+        section('Последние записи',
           el('button.btn.btn-ghost.btn-sm', {
             html: icon('plus', 14, 2.2),
             onclick: () => openActivityForm(),
-          }, ' Log'),
+          }, ' Записать'),
           store.activities.length
             ? el('div.activity-list', {}, store.recentActivities(5).map((a) =>
                 activityRow(a, { onEdit: (act) => openActivityForm(act) })))
-            : el('p.card-empty', {}, 'Meetings, calls, and notes you log show up here.')
+            : el('p.card-empty', {}, 'Здесь появятся встречи, звонки и заметки, которые вы запишете.')
         )
       ),
     ]);
