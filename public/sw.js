@@ -19,7 +19,7 @@
  * Auth and API calls are never cached, so the outbox handles outages honestly.
  */
 
-const VERSION = 'v4-internal';
+const VERSION = 'v5-avandok';
 const SHELL = `crm-shell-${VERSION}`;
 const RUNTIME = `crm-runtime-${VERSION}`;
 
@@ -32,6 +32,8 @@ const SHELL_URLS = [
   './platform.js',
   './icon-192.png',
   './favicon.ico',
+  './brand/avandok-navy-wordmark.png',
+  './brand/avandok-white-wordmark.png',
 ];
 
 self.addEventListener('install', (event) => {

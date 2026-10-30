@@ -16,6 +16,7 @@ import { rateText } from '../lib/recurring.js';
 import { stageBadge, avatar } from './bits.js';
 import { VIEW_KINDS, viewsOf } from '../lib/views.js';
 import { openContactForm, openDealForm, openActivityForm, openTaskForm } from './mvp-forms.js';
+import { blockEnabled, moduleEnabled } from '../lib/workspace.js';
 
 /** Results past this stop helping and start scrolling. */
 const MAX_PER_GROUP = 5;
@@ -26,15 +27,15 @@ let openPaletteModal = null;
 /** The four things a founder starts from a blank prompt. */
 function quickActions() {
   return [
-    { id: 'new-deal', title: 'Новая сделка', sub: 'Возможность, которая пойдёт по воронке', icon: 'deal', run: () => openDealForm() },
-    { id: 'new-lead', title: 'Новый контакт', sub: 'Человек, которому можно продать', icon: 'userPlus', run: () => openContactForm() },
-    { id: 'log-activity', title: 'Записать в историю', sub: 'Встреча, звонок, письмо или заметка', icon: 'video', run: () => openActivityForm() },
-    { id: 'new-task', title: 'Новая задача', sub: 'Напоминание с датой, чтобы связаться', icon: 'followups', run: () => openTaskForm() },
-    { id: 'go-pipeline', title: 'Открыть воронку', sub: 'Доска и список сделок', icon: 'pipeline', run: () => { location.hash = '#/pipeline'; } },
-    { id: 'go-forecast', title: 'Открыть прогноз', sub: 'Взвешенная воронка, выигрыши и проигрыши', icon: 'chart', run: () => { location.hash = '#/forecast'; } },
-    { id: 'go-followups', title: 'Открыть задачи', sub: 'Всё, что вы кому-то обещали', icon: 'followups', run: () => { location.hash = '#/followups'; } },
+    { id: 'new-deal', module: 'pipeline', title: 'Новая сделка', sub: 'Возможность, которая пойдёт по воронке', icon: 'deal', run: () => openDealForm() },
+    { id: 'new-lead', module: 'companies', title: 'Новый контакт', sub: 'Человек, которому можно продать', icon: 'userPlus', run: () => openContactForm() },
+    { id: 'log-activity', module: 'companies', title: 'Записать в историю', sub: 'Встреча, звонок, письмо или заметка', icon: 'video', run: () => openActivityForm() },
+    { id: 'new-task', module: 'tasks', title: 'Новая задача', sub: 'Напоминание с датой, чтобы связаться', icon: 'followups', run: () => openTaskForm() },
+    { id: 'go-pipeline', module: 'pipeline', title: 'Открыть воронку', sub: 'Доска и список сделок', icon: 'pipeline', run: () => { location.hash = '#/pipeline'; } },
+    { id: 'go-forecast', module: 'reports', title: 'Открыть прогноз', sub: 'Взвешенная воронка, выигрыши и проигрыши', icon: 'chart', run: () => { location.hash = '#/forecast'; } },
+    { id: 'go-followups', module: 'tasks', title: 'Открыть задачи', sub: 'Всё, что вы кому-то обещали', icon: 'followups', run: () => { location.hash = '#/followups'; } },
     { id: 'go-settings', title: 'Открыть настройки', sub: 'Этапы, план, напоминания и ваши данные', icon: 'gear', run: () => { location.hash = '#/settings'; } },
-  ];
+  ].filter((action) => !action.module || moduleEnabled(store.settings, action.module));
 }
 
 const goTo = (hash) => () => { location.hash = hash; };
@@ -170,7 +171,10 @@ function searchGroups(query) {
           run: () => openActivityForm(a),
         })),
     },
-  ];
+  ].filter((group) => {
+    const modules = { leads: 'companies', companies: 'companies', deals: 'pipeline', tasks: 'tasks', activities: 'companies' };
+    return !modules[group.key] || moduleEnabled(store.settings, modules[group.key]);
+  });
 }
 
 /** What to show before anything has been typed: actions, then what moved. */
@@ -214,6 +218,7 @@ function matchingActions(query) {
 }
 
 export function openPalette() {
+  if (!blockEnabled(store.settings, 'globalSearch')) return null;
   if (openPaletteModal) return openPaletteModal;
 
   let items = [];       // flat, selectable
@@ -403,6 +408,7 @@ const isTyping = (node) => !!node
  */
 export function installPaletteShortcut() {
   window.addEventListener('keydown', (e) => {
+    if (!blockEnabled(store.settings, 'globalSearch')) return;
     if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'k') {
       if (openPaletteModal) {
         e.preventDefault();

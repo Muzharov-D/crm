@@ -17,6 +17,9 @@ import {
 import { openContactForm, openDealForm, openTaskForm, openActivityForm } from '../ui/mvp-forms.js';
 import { openOnboarding } from '../ui/onboarding.js';
 import { forecastModeLabel } from '../lib/qualification.js';
+import { blockEnabled, moduleEnabled } from '../lib/workspace.js';
+import { dataQuality } from '../lib/operations.js';
+import { canWrite } from '../lib/access.js';
 
 /** Rows the attention list shows before it says how many it is holding back. */
 const ATTENTION_MAX = 6;
@@ -111,6 +114,7 @@ export function dashboardView() {
        can still do something about today. Only with a target set: without
        one the count is a fact, not progress. */
     const touches = touchProgress(store.activities, store.settings.touchTargets, today);
+    const quality = dataQuality(store, today);
 
     const openTasks = store.openTasks();
     const needsAttention = openTasks.filter((t) => t.due <= today);
@@ -142,7 +146,7 @@ export function dashboardView() {
     const maxStage = Math.max(...stages.map((s) => s.value), 1);
 
     append(body, [
-      el('div.stat-grid', {
+      blockEnabled(store.settings, 'dashboardKpis') && el('div.stat-grid', {
         className: `stat-grid${showRecurring || touches.pace ? ' wide' : ''}`,
       },
         statTile({
@@ -215,7 +219,21 @@ export function dashboardView() {
         })
       ),
 
-      section('Требует внимания',
+      blockEnabled(store.settings, 'dashboardPulse') && section('Пульс работы',
+        store.user?.role === 'admin' ? el('a.btn.btn-ghost.btn-sm', { href: '#/control' }, 'Настроить пульт') : null,
+        el('div.pulse-grid', {},
+          [
+            ['Просрочено', quality.overdueTasks.length, '#/followups', 'задачи с прошедшим сроком'],
+            ['Без следующего шага', quality.dealsWithoutNextStep.length, '#/pipeline', 'открытые сделки'],
+            ['Возможные дубли', quality.companyDuplicates.length + quality.contactDuplicates.length, '#/companies', 'контрагенты и контакты'],
+            ['Без ответственного', quality.leadsWithoutOwner.length, '#/leads', 'открытые лиды'],
+          ].map(([label, count, hash, sub]) => el('a.pulse-item', { href: hash },
+            el('span.pulse-item-top', {}, el('span', {}, label), el('strong', { className: count ? 'attention' : '' }, String(count))),
+            el('small', {}, sub)))),
+        quality.total === 0 && el('div.all-clear', { html: icon('check', 18, 2.4) },
+          el('span', {}, 'Операционных замечаний нет — данные и следующие шаги в порядке.'))),
+
+      blockEnabled(store.settings, 'dashboardAttention') && section('Требует внимания',
         el('a.btn.btn-ghost.btn-sm', { href: '#/followups' }, 'Все задачи'),
         needsAttention.length
           ? el('div.task-list', {}, needsAttention.slice(0, ATTENTION_MAX).map((t) =>
@@ -271,7 +289,7 @@ export function dashboardView() {
 
       /* Going cold: the risk nobody scheduled. Needs attention covers what
          you promised to do; this covers what you forgot to. */
-      (cold.length > 0 || nextless.length > 0) && section('Остывают',
+      blockEnabled(store.settings, 'dashboardCold') && (cold.length > 0 || nextless.length > 0) && section('Остывают',
         el('a.btn.btn-ghost.btn-sm', { href: '#/contacts' }, 'Все контакты'),
         cold.length > 0 && el('div.cold-list', {}, cold.map((r) => coldRow(r))),
         nextless.length > 0 && el('div.upnext', {},
@@ -294,8 +312,8 @@ export function dashboardView() {
         )
       ),
 
-      el('div.two-col', {},
-        section('Воронка по этапам',
+      (blockEnabled(store.settings, 'dashboardPipeline') || blockEnabled(store.settings, 'dashboardActivity')) && el('div.two-col', {},
+        blockEnabled(store.settings, 'dashboardPipeline') && section('Воронка по этапам',
           el('a.btn.btn-ghost.btn-sm', { href: '#/pipeline' }, 'Открыть доску'),
           open.length
             ? el('div.stage-bars', {}, stages.map((s) => el('div.stage-bar-row', {},
@@ -311,7 +329,7 @@ export function dashboardView() {
             : el('p.card-empty', {}, 'Открытых сделок нет. ',
                 el('button.btn-inline', { onclick: () => openDealForm() }, 'Добавить'), '.')
         ),
-        section('Последние записи',
+        blockEnabled(store.settings, 'dashboardActivity') && section('Последние записи',
           el('button.btn.btn-ghost.btn-sm', {
             html: icon('plus', 14, 2.2),
             onclick: () => openActivityForm(),
@@ -331,7 +349,16 @@ export function dashboardView() {
 
   const username = store.user?.username;
   root.append(
-    pageHead(username ? `${greeting()}, ${username}` : greeting()),
+    el('header.dashboard-hero', {},
+      el('div.dashboard-hero-copy', {},
+        el('div.brand-kicker.light', {}, 'АВАНДОК · ПУЛЬС ПРОДАЖ'),
+        el('h1', {}, username ? `${greeting()}, ${username}` : greeting()),
+        el('p', {}, 'Рабочий центр: показатели, риски и следующий шаг — без поиска по разным экранам.')),
+      el('div.dashboard-hero-actions', {},
+        moduleEnabled(store.settings, 'reports') && el('a.btn.btn-ghost', { href: '#/forecast' }, 'Отчётность'),
+        moduleEnabled(store.settings, 'pipeline') && canWrite(store.user) && el('button.btn.btn-primary', {
+          type: 'button', onclick: () => openDealForm(), 'aria-label': 'Новая сделка',
+        }, el('span', { html: icon('plus', 16) }), 'Новая сделка'))),
     body
   );
   root.destroy = () => store.removeEventListener('change', renderOnChange);

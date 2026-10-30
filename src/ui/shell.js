@@ -8,7 +8,6 @@ import { wipeSampleData } from '../lib/sample.js';
 import { openOnboarding } from './onboarding.js';
 import { openPalette, installPaletteShortcut } from './palette.js';
 import { offlineIndicator } from './offline.js';
-import { openDealForm, openContactForm, openActivityForm, openTaskForm, openLeadForm, openCompanyForm } from './mvp-forms.js';
 import { dashboardView } from '../views/dashboard.js';
 import { pipelineMvpView } from '../views/pipeline-mvp.js';
 import { contactsMvpView } from '../views/contacts-mvp.js';
@@ -22,6 +21,11 @@ import { activityView } from '../views/activity.js';
 import { settingsView, confirmSignOut } from '../views/settings.js';
 import { auditView } from '../views/audit.js';
 import { canWrite, roleLabel } from '../lib/access.js';
+import { openQuickCreate } from './quick-create.js';
+import { openNotifications } from './notifications.js';
+import { blockEnabled, routeEnabled, homeHash, workspaceOf } from '../lib/workspace.js';
+import { operationalAlerts } from '../lib/operations.js';
+import { controlView } from '../views/control.js';
 
 /* The mobile tab bar holds four destinations plus More; routes marked
    tab: false live in the More sheet there. The desktop sidebar shows
@@ -36,6 +40,7 @@ const ROUTES = [
   { hash: '#/employees', label: 'Сотрудники', icon: 'briefcase', view: employeesView, tab: false },
   { hash: '#/activity', label: 'История', icon: 'video', view: activityView, tab: false },
   { hash: '#/audit', label: 'Журнал', icon: 'listChecks', view: auditView, tab: false, admin: true },
+  { hash: '#/control', label: 'Пульт управления', icon: 'gear', view: controlView, tab: false, admin: true },
   { hash: '#/forecast', label: 'Отчётность', icon: 'chart', view: reportsView, tab: false },
   { hash: '#/dictionaries', label: 'Справочники', icon: 'listChecks', view: dictionariesView, tab: false },
   { hash: '#/settings', label: 'Настройки', icon: 'gear', view: settingsView, tab: false },
@@ -48,6 +53,9 @@ const MORE_SUBS = {
   '#/audit': 'Кто, когда и что изменил в CRM',
   '#/forecast': 'Взвешенная воронка по месяцам закрытия',
   '#/settings': 'Оформление, валюта, этапы и ваши данные',
+  '#/control': 'Модули, рабочие блоки и активность сотрудников',
+  '#/employees': 'Бизнес-роли, назначения и загрузка',
+  '#/dictionaries': 'Управляемые значения прикладных полей',
 };
 
 /** Apple keyboards say ⌘K; everyone else says Ctrl K. */
@@ -59,12 +67,16 @@ function shortcutHint() {
 export function mountShell(appRoot) {
   // Before the first message can need announcing - see the note in toast.js.
   mountToastRoot();
+  if (!location.hash || location.hash === '#/') {
+    history.replaceState(history.state, '', homeHash(store.settings));
+  }
   const sampleBanner = el('div');
+  const workspaceBar = el('header.workspace-topbar');
   const viewWrap = el('div');
   // tabindex -1 lets navigation hand focus to the new view's content:
   // the clicked nav link is rebuilt by renderNav, so without this the
   // keyboard user is dumped back at the top of the document every route.
-  const main = el('main.main', { id: 'main', tabindex: -1 }, sampleBanner, viewWrap);
+  const main = el('main.main', { id: 'main', tabindex: -1 }, workspaceBar, sampleBanner, viewWrap);
   let currentView = null;
 
   /* Sample-data banner: always visible while exploring, one-tap wipe. */
@@ -101,8 +113,14 @@ export function mountShell(appRoot) {
     location.hash = hash;
   }
 
+  function routePath(hash) {
+    const clean = (hash || '#/').split('?')[0];
+    return clean === '#/' ? 'dashboard' : clean.replace(/^#\//, '');
+  }
+
   function visibleRoutes() {
-    return ROUTES.filter((r) => !r.admin || store.user?.role === 'admin');
+    return ROUTES.filter((r) => (!r.admin || store.user?.role === 'admin')
+      && routeEnabled(store.settings, routePath(r.hash)));
   }
 
   function routeFor(hash) {
@@ -138,7 +156,7 @@ export function mountShell(appRoot) {
   function badgeSignature() {
     const today = todayISO();
     const open = store.openTasks();
-    return `${open.filter((t) => t.due < today).length}|${open.filter((t) => t.due === today).length}`;
+    return `${open.filter((t) => t.due < today).length}|${open.filter((t) => t.due === today).length}|${JSON.stringify(workspaceOf(store.settings))}|${operationalAlerts(store, store.settings).length}`;
   }
 
   /* Quick add - the FAB (mobile) and sidebar button (desktop) both open it. */
@@ -147,55 +165,30 @@ export function mountShell(appRoot) {
       toast('Роль наблюдателя позволяет только просматривать данные', { icon: 'info' });
       return;
     }
-    const entry = (name, title, sub, open) => el('button.settings-row', {
-      type: 'button',
-      onclick: () => { modal.close(); setTimeout(open, 120); },
-    },
-      el('span.row-ic', { html: icon(name, 20, 1.8) }),
-      el('div.grow', {},
-        el('div.title', {}, title),
-        el('div.sub', {}, sub)
-      ),
-      el('span.row-chev', { html: icon('chevR', 18) })
-    );
-    const modal = openModal({
-      title: 'Создать',
-      content: el('div.settings-list', {},
-        entry('deal', 'Сделка', 'Договор, участники, платежи и команда', () => openDealForm()),
-        entry('target', 'Лид', 'Обращение и квалификация L0–L5', () => openLeadForm()),
-        entry('company', 'Контрагент', 'Клиент, партнёр или конкурент', () => openCompanyForm()),
-        entry('userPlus', 'Контакт', 'Человек, которому можно продать', () => openContactForm()),
-        entry('video', 'Запись в историю', 'Встреча, звонок, письмо или заметка', () => openActivityForm()),
-        entry('followups', 'Задача', 'Напоминание с датой, чтобы связаться', () => openTaskForm())
-      ),
-    });
+    openQuickCreate();
   }
 
   /* Sidebar (desktop) */
   const username = store.user?.username || 'Пользователь';
   const sidebarNav = el('div', { style: { display: 'contents' } });
+  const sidebarSearch = el('button.sidebar-search', {
+    type: 'button', html: icon('search', 17, 2), 'aria-haspopup': 'dialog', onclick: openPalette,
+  }, el('span.grow', {}, 'Поиск'), el('kbd.kbd', { 'aria-hidden': 'true' }, shortcutHint()));
+  const sidebarAdd = canWrite(store.user) && el('button.btn.btn-primary.sidebar-add', {
+    html: icon('plus', 17, 2.2), onclick: openQuickAdd,
+  }, ' Создать');
   const sidebar = el('nav.sidebar', { 'aria-label': 'Основное меню' },
-    el('div.brand', {},
-      el('img.brand-mark', { src: './icon-192.png', alt: '', 'aria-hidden': 'true' }),
-      'CRM для продаж'
+    el('button.brand', { type: 'button', onclick: () => navigate(homeHash(store.settings)), 'aria-label': 'Авандок CRM — на главную' },
+      el('img.brand-wordmark', { src: './brand/avandok-white-wordmark.png', alt: 'Авандок' }),
+      el('span.brand-product', {}, 'CRM · SALES OS'),
+      el('span.brand-pulse', { 'aria-hidden': 'true' })
     ),
-    el('button.sidebar-search', {
-      type: 'button',
-      html: icon('search', 17, 2),
-      'aria-haspopup': 'dialog',
-      onclick: openPalette,
-    },
-      el('span.grow', {}, 'Поиск'),
-      el('kbd.kbd', { 'aria-hidden': 'true' }, shortcutHint())
-    ),
+    sidebarSearch,
     sidebarNav,
     el('div.sidebar-spacer'),
     // Where the data actually is, whenever that isn't "in your cloud".
     offlineIndicator(),
-    canWrite(store.user) && el('button.btn.btn-primary.sidebar-add', {
-      html: icon('plus', 17, 2.2),
-      onclick: openQuickAdd,
-    }, ' Создать'),
+    sidebarAdd,
     el('div.sidebar-user', {},
       el('span.avatar', {}, username.charAt(0).toUpperCase()),
       el('span.sidebar-user-copy.grow.min0', {},
@@ -219,7 +212,7 @@ export function mountShell(appRoot) {
     const modal = openModal({
       title: 'Ещё',
       content: el('div.settings-list', {},
-        el('button.settings-row', {
+        blockEnabled(store.settings, 'globalSearch') && el('button.settings-row', {
           type: 'button',
           onclick: () => { modal.close(); setTimeout(openPalette, 120); },
         },
@@ -316,11 +309,62 @@ export function mountShell(appRoot) {
     }
   }
 
+  function renderTopbar() {
+    clear(workspaceBar);
+    sidebarSearch.hidden = !blockEnabled(store.settings, 'globalSearch');
+    if (sidebarAdd) sidebarAdd.hidden = !blockEnabled(store.settings, 'quickCreate');
+    if (fab) fab.hidden = !blockEnabled(store.settings, 'quickCreate');
+    const route = routeFor(location.hash);
+    const alerts = blockEnabled(store.settings, 'notifications') ? operationalAlerts(store, store.settings) : [];
+    document.documentElement.dataset.density = workspaceOf(store.settings).density;
+    workspaceBar.append(
+      el('div.workspace-location', {},
+        el('span.workspace-location-brand', {}, 'АВАНДОК'),
+        el('span.workspace-location-separator', {}, '/'),
+        el('strong', {}, route.label)),
+      el('div.workspace-status', {}, el('span.pulse-dot', { 'aria-hidden': 'true' }), 'Данные в работе'),
+      el('div.workspace-actions', {},
+        el('span.workspace-date', {}, new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' }).format(new Date())),
+        blockEnabled(store.settings, 'globalSearch') && el('button.icon-btn.workspace-action', {
+          type: 'button', html: icon('search', 18), 'aria-label': 'Поиск по всему', onclick: openPalette,
+        }),
+        blockEnabled(store.settings, 'notifications') && el('button.icon-btn.workspace-action.notification-button', {
+          type: 'button', html: icon('alert', 18),
+          'aria-label': alerts.length ? `Уведомления: ${alerts.length}` : 'Уведомления',
+          onclick: openNotifications,
+        }, alerts.length > 0 && el('span.notification-count', {}, alerts.length > 9 ? '9+' : String(alerts.length))),
+        store.user?.role === 'admin' && el('a.btn.btn-ghost.btn-sm.workspace-control-link', { href: '#/control', 'aria-label': 'Пульт управления' },
+          el('span', { html: icon('gear', 15) }), 'Пульт'),
+        canWrite(store.user) && blockEnabled(store.settings, 'quickCreate') && el('button.btn.btn-primary.btn-sm.workspace-create', {
+          type: 'button', onclick: openQuickAdd, 'aria-label': 'Создать запись',
+        }, el('span', { html: icon('plus', 15) }), 'Создать')));
+  }
+
   function renderRoute({ resumeScroll = false } = {}) {
+    const path = routePath(location.hash);
+    document.documentElement.dataset.density = workspaceOf(store.settings).density;
+    if (!routeEnabled(store.settings, path)) {
+      renderNav();
+      renderTopbar();
+      currentView?.destroy?.();
+      clear(viewWrap);
+      document.title = 'Раздел выключен · Авандок CRM';
+      currentView = el('div.view', {}, el('div.module-disabled', {},
+        el('span.module-disabled-icon', { html: icon('gear', 28) }),
+        el('div.brand-kicker', {}, 'ПУЛЬТ УПРАВЛЕНИЯ'),
+        el('h1', {}, 'Раздел выключен'),
+        el('p', {}, 'Модуль скрыт администратором. Записи и история сохранены — их можно вернуть включением модуля.'),
+        store.user?.role === 'admin'
+          ? el('a.btn.btn-primary', { href: '#/control' }, 'Открыть пульт управления')
+          : el('a.btn.btn-primary', { href: homeHash(store.settings) }, 'На главную')));
+      viewWrap.append(currentView);
+      return;
+    }
     const route = routeFor(location.hash);
     // Name the page in the tab and in history, not just the app.
-    document.title = route === ROUTES[0] ? 'CRM для продаж' : `${route.label} · CRM для продаж`;
+    document.title = route === ROUTES[0] ? 'Авандок CRM' : `${route.label} · Авандок CRM`;
     renderNav();
+    renderTopbar();
     currentView?.destroy?.();
     clear(viewWrap);
     currentView = route.view({ navigate, params: paramsFor(location.hash) });
@@ -373,7 +417,7 @@ export function mountShell(appRoot) {
   store.addEventListener('change', () => {
     clearTimeout(badgeTimer);
     badgeTimer = setTimeout(() => {
-      if (badgeSignature() !== badgeState) keepingFocus(renderNav)();
+      if (badgeSignature() !== badgeState) keepingFocus(() => { renderNav(); renderTopbar(); })();
     }, 400);
   });
 }

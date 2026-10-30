@@ -141,7 +141,7 @@ export function pipelineMvpView({ params, navigate }) {
   function salesTeamEditor(deal) {
     const rows = store.salesTeamFor(deal.id);
     const save = (team) => store.setSalesTeam(deal.id, team.filter((row) => row.dealId === deal.id));
-    const employee = el('select.select', {}, el('option', { value: '' }, 'Сотрудник'), store.employees.filter((e) => !rows.some((r) => r.employeeId === e.id)).map((e) => el('option', { value: e.id }, e.name)));
+    const employee = el('select.select', {}, el('option', { value: '' }, 'Сотрудник'), store.activeEmployees().filter((e) => !rows.some((r) => r.employeeId === e.id)).map((e) => el('option', { value: e.id }, e.name)));
     const role = el('select.select', { 'aria-label': 'Роль сотрудника в сделке' }, dictionarySelectOptions('salesRoles'));
     const bodyRows = rows.length ? rows.map((r) => {
       const roleInput = el('select.select', { disabled: !canWrite(store.user),

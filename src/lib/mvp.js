@@ -21,7 +21,7 @@ export const canonicalLeadStage = (stage) => {
 export function normalizeEmployee(raw = {}) {
   return {
     ...raw, id: text(raw.id) || uid(), name: text(raw.name), role: text(raw.role),
-    username: text(raw.username), notes: text(raw.notes), createdAt: stamp(raw.createdAt),
+    username: text(raw.username), notes: text(raw.notes), active: raw.active !== false, createdAt: stamp(raw.createdAt),
   };
 }
 

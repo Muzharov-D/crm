@@ -1,4 +1,4 @@
-import { el, clear, keepingFocus } from '../ui/dom.js';
+import { el, clear, keepingFocus, append } from '../ui/dom.js';
 import { store } from '../lib/store.js';
 import { LEAD_STAGES } from '../lib/spec.js';
 import { canWrite } from '../lib/access.js';
@@ -66,7 +66,7 @@ export function leadsMvpView({ params, navigate }) {
       try { const created = await store.convertLeadToDeal(id); toast('Сделка создана. Поля перенесены один раз.', { icon: 'check' }); navigate(`#/pipeline?id=${created.id}`); }
       catch (error) { toast(error.message, { icon: 'alert' }); }
     };
-    root.append(el('a.back-link', { href: '#/leads' }, '← Все лиды'),
+    append(root, [el('a.back-link', { href: '#/leads' }, '← Все лиды'),
       pageHead(lead.name || 'Лид без названия', `${stageLabel(lead.stage)} · создан ${new Date(lead.createdAt).toLocaleString('ru-RU')}`,
         actionButton('Экспорт XLSX', () => exportXlsx('leads', [lead], `Лид-${lead.name}.xlsx`), { iconName: 'download' }),
         canWrite(store.user) && actionButton('Редактировать', () => openLeadForm(lead), { iconName: 'pencil' }),
@@ -91,7 +91,7 @@ export function leadsMvpView({ params, navigate }) {
       canWrite(store.user) && el('div.danger-zone', {}, actionButton('Удалить лид', async () => {
         if (!await confirmDialog({ title: 'Удалить лид?', message: 'Системный журнал стадий останется в аудите данных.' })) return;
         await store.deleteLead(id); navigate('#/leads');
-      }, { iconName: 'trash' })));
+      }, { iconName: 'trash' }))]);
   }
 
   render();

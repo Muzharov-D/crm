@@ -7,6 +7,7 @@ import { openModal } from './modal.js';
 import { maybeNudgeNextStep } from './nudge.js';
 import { store, activityTypeInfo, repeatLabel } from '../lib/store.js';
 import { stageInfo, openStages, isTerminalStage } from '../lib/forecast.js';
+import { blockEnabled } from '../lib/workspace.js';
 import {
   initials, dueLabel, formatDate, formatMoney, formatClock, todayISO, addDays,
 } from '../lib/util.js';
@@ -20,7 +21,7 @@ export function pageHead(title, ...actions) {
   return el('header.page-head', {},
     el('h1.page-title', {}, title),
     el('div.page-actions', {},
-      el('button.icon-btn.page-search', {
+      blockEnabled(store.settings, 'globalSearch') && el('button.icon-btn.page-search', {
         type: 'button',
         html: icon('search', 20, 2),
         'aria-label': 'Поиск по всему',

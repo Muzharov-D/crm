@@ -1,12 +1,12 @@
 {
-  "name": "CRM",
-  "short_name": "CRM",
-  "description": "Контакты, компании, сделки, задачи и прогноз продаж.",
+  "name": "Авандок CRM",
+  "short_name": "Авандок",
+  "description": "Полный цикл продаж, платежи, задачи и управляемая аналитика.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f9f9f7",
-  "theme_color": "#f9f9f7",
+  "background_color": "#EEF4FA",
+  "theme_color": "#121239",
   "icons": [
     {
       "src": "./icon-192.png",

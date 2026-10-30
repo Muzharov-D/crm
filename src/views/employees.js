@@ -15,9 +15,10 @@ export function employeesView({ params, navigate }) {
       actionButton('Экспорт XLSX', () => exportXlsx('employees'), { iconName: 'download' }),
       canWrite(store.user) && actionButton('Новый сотрудник', () => openEmployeeForm(), { primary: true, iconName: 'plus' })),
       store.employees.length ? el('div.table-wrap', {}, el('table.data-table', {},
-        el('thead', {}, el('tr', {}, el('th', {}, 'ФИО'), el('th', {}, 'Роль'), el('th', {}, 'Пользователь'), el('th', {}, 'Лиды'), el('th', {}, 'Сделки в команде'), el('th', {}, 'Задачи'))),
+        el('thead', {}, el('tr', {}, el('th', {}, 'ФИО'), el('th', {}, 'Роль'), el('th', {}, 'Статус'), el('th', {}, 'Пользователь'), el('th', {}, 'Лиды'), el('th', {}, 'Сделки в команде'), el('th', {}, 'Задачи'))),
         el('tbody', {}, store.employees.map((e) => el('tr', {},
           el('td', {}, el('a.record-link', { href: `#/employees?id=${e.id}` }, e.name)), el('td', {}, e.role || '—'),
+          el('td', {}, el('span.status-chip', { className: `status-chip${e.active !== false ? ' success' : ' muted'}` }, e.active !== false ? 'Активен' : 'Выключен')),
           el('td', {}, e.username || '—'), el('td.num', {}, store.leads.filter((l) => l.employeeId === e.id).length),
           el('td.num', {}, new Set(store.salesTeam.filter((r) => r.employeeId === e.id).map((r) => r.dealId)).size),
           el('td.num', {}, store.tasks.filter((t) => t.employeeId === e.id && !t.done).length))))))
@@ -29,7 +30,7 @@ export function employeesView({ params, navigate }) {
     const teams = store.salesTeam.filter((r) => r.employeeId === id);
     root.append(el('a.back-link', { href: '#/employees' }, '← Все сотрудники'),
       pageHead(employee.name, employee.role || 'Роль не указана', canWrite(store.user) && actionButton('Редактировать', () => openEmployeeForm(employee), { iconName: 'pencil' })),
-      el('section.detail-section', {}, facts([['ФИО', employee.name], ['Роль', employee.role || '—'], ['Системный пользователь', employee.username || 'Не связан'], ['Комментарий', employee.notes || '—']]),
+      el('section.detail-section', {}, facts([['ФИО', employee.name], ['Роль', employee.role || '—'], ['Статус', employee.active !== false ? 'Активен' : 'Выключен'], ['Системный пользователь', employee.username || 'Не связан'], ['Комментарий', employee.notes || '—']]),
         el('p.field-hint', {}, 'Системные роли admin / manager / viewer управляются доступом к CRM и не подменяют бизнес-роль сотрудника.')),
       el('section.detail-section', {}, el('div.section-head', {}, el('h2.section-title', {}, 'Команды продаж')),
         teams.length ? el('div.link-list', {}, teams.map((r) => { const d = store.dealById(r.dealId); return d && el('a.person-row', { href: `#/pipeline?id=${d.id}` },

@@ -1441,7 +1441,7 @@ export function settingsView() {
   };
 
   root.append(
-    pageHead('Настройки'),
+    pageHead('Настройки', store.user?.role === 'admin' && el('a.btn.btn-primary.btn-sm', { href: '#/control' }, 'Пульт управления')),
     readOnly ? el('p.page-sub', {}, 'Вы вошли как наблюдатель. Настройки и данные доступны только для просмотра; экспорт и выход из аккаунта по-прежнему работают.') : null,
     section('Оформление', null,
       el('div.settings-body', {},

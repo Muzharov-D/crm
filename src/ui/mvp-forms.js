@@ -123,7 +123,7 @@ export function openLeadForm(lead = null, { presets = {}, onSaved = null } = {})
   const contact = makeSelect(recordOptions(store.contacts, 'Без контакта'), data.contactId || '');
   const company = makeSelect(recordOptions(store.companies, 'Без контрагента'), data.companyId || '');
   const partner = makeSelect(recordOptions(companiesWithRole('Партнёр-интегратор', [data.partnerId]), 'Без партнёра'), data.partnerId || '');
-  const employee = makeSelect(recordOptions(store.employees, 'Не назначен'), data.employeeId || store.currentEmployee()?.id || '');
+  const employee = makeSelect(recordOptions(store.activeEmployees([data.employeeId]), 'Не назначен'), data.employeeId || (store.currentEmployee()?.active !== false ? store.currentEmployee()?.id : '') || '');
   const { product, subproduct } = productFields(data);
   const budget = textInput({ value: data.preliminaryBudget || '', type: 'number', min: 0, step: '0.01', inputmode: 'decimal' });
   const reason = makeSelect(dictOptions('leadReasons', data.closeReason), data.closeReason || '');
@@ -250,7 +250,7 @@ export function openActivityForm(activity = null, { presets = {}, onSaved = null
   if (!ensureWritable()) return;
   const data = { ...presets, ...activity };
   const date = textInput({ value: data.date || todayISO(), type: 'date', max: todayISO(), required: true });
-  const employee = makeSelect(recordOptions(store.employees, 'Не указан'), data.employeeId || store.currentEmployee()?.id || '');
+  const employee = makeSelect(recordOptions(store.activeEmployees([data.employeeId]), 'Не указан'), data.employeeId || (store.currentEmployee()?.active !== false ? store.currentEmployee()?.id : '') || '');
   const type = makeSelect([
     { value: 'note', label: 'Событие / комментарий' }, { value: 'meeting', label: 'Встреча' },
     { value: 'call', label: 'Звонок' }, { value: 'email', label: 'Письмо' },
@@ -283,7 +283,7 @@ export function openTaskForm(task = null, { presets = {}, onSaved = null } = {})
   if (!ensureWritable()) return;
   const data = { ...presets, ...task };
   const title = textInput({ value: data.title || '', required: true, maxlength: 400 });
-  const employee = makeSelect(recordOptions(store.employees, 'Не назначен'), data.employeeId || store.currentEmployee()?.id || '');
+  const employee = makeSelect(recordOptions(store.activeEmployees([data.employeeId]), 'Не назначен'), data.employeeId || (store.currentEmployee()?.active !== false ? store.currentEmployee()?.id : '') || '');
   const startDate = textInput({ value: data.startDate || todayISO(), type: 'date', required: true });
   const due = textInput({ value: data.due || todayISO(), type: 'date', required: true });
   const status = makeSelect(dictOptions('taskStatuses', data.status || 'К выполнению', null, null), data.status || 'К выполнению');

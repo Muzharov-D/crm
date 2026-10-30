@@ -1277,6 +1277,12 @@ class Store extends EventTarget {
 
   employeeById(id) { return this.employees.find((e) => e.id === id) || null; }
 
+  /** Active employees plus legacy selections already present on a record. */
+  activeEmployees(currentIds = []) {
+    const keep = new Set(currentIds.filter(Boolean));
+    return this.employees.filter((e) => e.active !== false || keep.has(e.id));
+  }
+
   currentEmployee() {
     const username = this.user?.username;
     return this.employees.find((e) => e.username === username || e.name === username) || null;
