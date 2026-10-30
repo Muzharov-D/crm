@@ -20,7 +20,7 @@
     "express": "^5.1.0",
     "lucide": "^1.28.0",
     "pg": "^8.16.0",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    "xlsx": "file:vendor/xlsx-0.20.3.tgz"
   },
   "engines": {
     "node": ">=22.12"
