@@ -27,8 +27,7 @@ export function authView({ onSignedIn }) {
       feature('chart', 'Взвешенный прогноз по вашим этапам, а не по ожиданиям'),
       feature('company', 'Данные хранятся на вашем собственном сервере')
     ),
-    cta,
-    el('p.auth-note', {}, 'Бесплатно • Без рекламы')
+    cta
   );
 
   function feature(ic, text) {
