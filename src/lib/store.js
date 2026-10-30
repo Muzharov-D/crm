@@ -1374,6 +1374,7 @@ class Store extends EventTarget {
       throw new Error('Этот лид уже переведён в сделку');
     }
     if (lead.status !== 'Квалифицирован') throw new Error('В сделку можно перевести только квалифицированный лид');
+    if (!(overrides.companyId || lead.companyId)) throw new Error('Перед переводом в сделку укажите контрагента лида');
     const deal = await this.addDeal({
       name: lead.name, product: lead.product, subproduct: lead.subproduct,
       contactId: lead.contactId, contacts: lead.contactId ? [{ contactId: lead.contactId, role: '', influence: '' }] : [],
@@ -1443,15 +1444,20 @@ class Store extends EventTarget {
     }
     const requestedOutcome = patch.outcome !== undefined ? patch.outcome : deal.outcome;
     const requestedWinner = patch.winner !== undefined ? patch.winner : deal.winner;
+    const requestedCloseReason = patch.closeReason !== undefined ? patch.closeReason : deal.closeReason;
     if (requestedOutcome === 'Проиграна' && (patch.outcome !== undefined || patch.stage === 'lost')
         && !str(requestedWinner).trim()) {
       throw new Error('При проигрыше обязательно укажите, кто выиграл');
+    }
+    if (requestedOutcome && requestedOutcome !== 'Выиграна' && patch.outcome !== undefined
+        && !str(requestedCloseReason).trim()) {
+      throw new Error('При закрытии сделки обязательно укажите причину');
     }
     const fromStage = deal.stage;
     const fromOutcome = deal.outcome || '';
     const beforeContacts = deal.contacts;
     Object.assign(deal, patch, { updatedAt: Date.now() });
-    if (deal.outcome === 'Выиграна' && !fromOutcome && !['s8', 's9', 's10'].includes(deal.stage)) deal.stage = 's8';
+    if (deal.outcome === 'Выиграна' && fromOutcome !== 'Выиграна' && !['s8', 's9', 's10'].includes(deal.stage)) deal.stage = 's8';
     deal.custom = normalizeCustomValues(deal.custom);
     deal.qualification = normalizeQualification(deal.qualification);
     settleDealContacts(deal, patch, beforeContacts);
@@ -1476,9 +1482,9 @@ class Store extends EventTarget {
     return deal;
   }
 
-  /** Board moves reopen a closed deal; closing itself is an independent outcome. */
-  moveDeal(id, stage) {
-    return this.updateDeal(id, ['won', 'lost'].includes(stage) ? { stage } : { stage, outcome: '' });
+  /** MVP board moves change only the stage; legacy callers may still explicitly reopen. */
+  moveDeal(id, stage, { preserveOutcome = false } = {}) {
+    return this.updateDeal(id, ['won', 'lost'].includes(stage) || preserveOutcome ? { stage } : { stage, outcome: '' });
   }
 
   async deleteDeal(id) {
@@ -1568,7 +1574,8 @@ class Store extends EventTarget {
   async setCompanyTeam(companyId, rows) {
     this.#assertWritable();
     const kept = this.companyTeam.filter((r) => r.companyId !== companyId);
-    const next = rows.map((r) => normalizeCompanyTeam({ ...r, id: r.id || uid(), companyId, createdAt: r.createdAt || Date.now() }));
+    const next = rows.filter((r) => !r.companyId || r.companyId === companyId)
+      .map((r) => normalizeCompanyTeam({ ...r, id: r.id || uid(), companyId, createdAt: r.createdAt || Date.now() }));
     this.companyTeam = [...kept, ...next];
     this.#emit();
     await this.#save(KV.companyTeam, this.companyTeam);

@@ -6,7 +6,7 @@ import {
 } from '../src/lib/spec.js';
 import {
   companiesWithoutPartnerDeals, filterDeals, funnelReport, paymentForecast,
-  planKey, probabilityBreakdown, topOpenDeals,
+  planKey, probabilityBreakdown, productBreakdown, topOpenDeals,
 } from '../src/lib/reporting.js';
 
 describe('financial year April–March', () => {
@@ -83,7 +83,9 @@ describe('unified reports', () => {
     expect(productForSubproduct({}, 'CRM')).toBe('Платформа');
   });
 
-  it('finds companies without deals through the selected partner', () => {
+  it('excludes only the selected partner in the alternative forecast mode', () => {
+    expect(filterDeals(deals, { partnerId: 'p', withoutPartnerDeals: true }).map((row) => row.id)).toEqual(['b', 'c']);
+    expect(filterDeals(deals, { partnerId: 'p', withoutPartnerDeals: false }).map((row) => row.id)).toEqual(['a']);
     expect(companiesWithoutPartnerDeals([
       { id: 'p' }, { id: 'with' }, { id: 'without' },
     ], [{ companyId: 'with', partnerId: 'p' }], 'p').map((row) => row.id)).toEqual(['without']);
@@ -106,5 +108,36 @@ describe('unified reports', () => {
     const many = Array.from({ length: 25 }, (_, value) => ({ id: `${value}`, value, stage: 's2' }));
     expect(topOpenDeals(many)).toHaveLength(20);
     expect(topOpenDeals(many)[0].value).toBe(24);
+  });
+
+  it('ranks top deals by selected-FY payments and then probability category', () => {
+    const rows = [
+      { id: 'low', name: 'Низкая', stage: 's5', value: 9000, probabilityCategory: 'Низкая' },
+      { id: 'high', name: 'Высокая', stage: 's5', value: 100, probabilityCategory: 'Высокая' },
+      { id: 'closed', name: 'Закрытая', stage: 's5', value: 50000, outcome: 'Выиграна' },
+    ];
+    const payments = [
+      { dealId: 'low', fiscalYear: 2027, amount: 1000 },
+      { dealId: 'high', fiscalYear: 2027, amount: 1000 },
+      { dealId: 'high', fiscalYear: 2028, amount: 9000 },
+      { dealId: 'closed', fiscalYear: 2027, amount: 50000 },
+    ];
+    expect(topOpenDeals(rows, payments, 2027).map((row) => row.id)).toEqual(['high', 'low']);
+    expect(topOpenDeals(rows, payments, 2027)[0].periodValue).toBe(1000);
+  });
+
+  it('builds raw and weighted product/subproduct breakdown from selected-FY payments', () => {
+    const rows = productBreakdown(deals, [
+      { dealId: 'a', fiscalYear: 2027, amount: 1000 },
+      { dealId: 'a', fiscalYear: 2028, amount: 9000 },
+      { dealId: 'b', fiscalYear: 2027, amount: 2000 },
+      { dealId: 'c', fiscalYear: 2027, amount: 8000 },
+    ], 2027, ['Платформа', 'ИИ'], [
+      { parent: 'Платформа', value: 'CRM' }, { parent: 'ИИ', value: 'Ассистент' },
+    ]);
+    expect(rows.find((row) => row.product === 'Платформа' && row.subproduct === 'CRM'))
+      .toMatchObject({ raw: 1000, weighted: 350 });
+    expect(rows.find((row) => row.product === 'ИИ' && row.subproduct === 'Ассистент'))
+      .toMatchObject({ raw: 2000, weighted: 900 });
   });
 });

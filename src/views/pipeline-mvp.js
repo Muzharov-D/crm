@@ -1,6 +1,6 @@
 import { el, clear, keepingFocus } from '../ui/dom.js';
 import { store } from '../lib/store.js';
-import { DEAL_STAGES, dealTotals, fiscalYearAt } from '../lib/spec.js';
+import { DEAL_STAGES, dealTotals, fiscalYearAt, dictionaryOptions } from '../lib/spec.js';
 import { canWrite } from '../lib/access.js';
 import { isOpen } from '../lib/forecast.js';
 import { openDealForm, openPaymentForm } from '../ui/mvp-forms.js';
@@ -11,6 +11,11 @@ import { confirmDialog } from '../ui/modal.js';
 import { toast } from '../ui/toast.js';
 
 const stageLabel = (id) => DEAL_STAGES.find((s) => s.id === id)?.label || id;
+const dictionarySelectOptions = (key, current = '') => {
+  const options = dictionaryOptions(store.settings, key);
+  if (current && !options.some((o) => o.value === current)) options.push({ value: current, label: current });
+  return options.map((o) => el('option', { value: o.value, selected: o.value === current }, o.label));
+};
 
 export function pipelineMvpView({ params, navigate }) {
   const root = el('div.view'); const id = params.get('id');
@@ -58,7 +63,7 @@ export function pipelineMvpView({ params, navigate }) {
         rows.map((d) => card(d)));
       column.addEventListener('dragover', (e) => { if (canWrite(store.user)) { e.preventDefault(); column.classList.add('drag-over'); } });
       column.addEventListener('dragleave', () => column.classList.remove('drag-over'));
-      column.addEventListener('drop', async (e) => { e.preventDefault(); column.classList.remove('drag-over'); if (!canWrite(store.user)) return; const dealId = e.dataTransfer.getData('text/deal-id'); if (dealId) await store.moveDeal(dealId, stage.id); });
+      column.addEventListener('drop', async (e) => { e.preventDefault(); column.classList.remove('drag-over'); if (!canWrite(store.user)) return; const dealId = e.dataTransfer.getData('text/deal-id'); if (dealId) await store.moveDeal(dealId, stage.id, { preserveOutcome: true }); });
       return column;
     }));
   }
@@ -69,7 +74,7 @@ export function pipelineMvpView({ params, navigate }) {
       el('p.muted', {}, store.companyById(deal.companyId)?.name || 'Контрагент не указан'),
       el('strong', {}, money(dealTotals(deal.id, store.payments).total)),
       el('div.deal-card-meta', {}, deal.status || '—', deal.outcome && ` · ${deal.outcome}`),
-      el('select.select', { 'aria-label': `Стадия сделки ${deal.name}`, disabled: !canWrite(store.user), onchange: (e) => store.moveDeal(deal.id, e.target.value) },
+      el('select.select', { 'aria-label': `Стадия сделки ${deal.name}`, disabled: !canWrite(store.user), onchange: (e) => store.moveDeal(deal.id, e.target.value, { preserveOutcome: true }) },
         DEAL_STAGES.map((s) => el('option', { value: s.id, selected: s.id === deal.stage }, s.label))));
     node.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/deal-id', deal.id); e.dataTransfer.effectAllowed = 'move'; });
     return node;
@@ -101,21 +106,23 @@ export function pipelineMvpView({ params, navigate }) {
   function participantsEditor(deal) {
     const rows = deal.contacts || [];
     const save = (contacts) => store.updateDeal(deal.id, { contacts });
-    const participantOptions = (current) => [
+    const participantOptions = (current, requiredRole) => [
       el('option', { value: '' }, 'Не выбран'),
-      ...rows.map((r) => el('option', { value: r.contactId, selected: r.contactId === current }, store.contactById(r.contactId)?.name || 'Контакт')),
+      ...rows.filter((r) => r.role === requiredRole || r.contactId === current)
+        .map((r) => el('option', { value: r.contactId, selected: r.contactId === current }, store.contactById(r.contactId)?.name || 'Контакт')),
     ];
-    const economic = el('select.select', { disabled: !canWrite(store.user), onchange: (e) => store.updateDeal(deal.id, { economicBuyerContactId: e.target.value || null }) }, participantOptions(deal.economicBuyerContactId));
-    const champion = el('select.select', { disabled: !canWrite(store.user), onchange: (e) => store.updateDeal(deal.id, { championContactId: e.target.value || null }) }, participantOptions(deal.championContactId));
-    const contact = el('select.select', {}, el('option', { value: '' }, 'Контакт'), store.contacts.filter((c) => !rows.some((r) => r.contactId === c.id)).map((c) => el('option', { value: c.id }, c.name)));
-    const role = el('input.input', { placeholder: 'Роль' });
-    const influence = el('select.select', {}, ['За нас', 'Нейтрален', 'Против нас'].map((v) => el('option', { value: v }, v)));
+    const economic = el('select.select', { disabled: !canWrite(store.user), onchange: (e) => store.updateDeal(deal.id, { economicBuyerContactId: e.target.value || null }) }, participantOptions(deal.economicBuyerContactId, 'Экономический покупатель'));
+    const champion = el('select.select', { disabled: !canWrite(store.user), onchange: (e) => store.updateDeal(deal.id, { championContactId: e.target.value || null }) }, participantOptions(deal.championContactId, 'Чемпион'));
+    const contact = el('select.select', {}, el('option', { value: '' }, 'Контакт'), store.contacts.filter((c) => !rows.some((r) => r.contactId === c.id)
+      && (!deal.companyId || c.companyId === deal.companyId)).map((c) => el('option', { value: c.id }, c.name)));
+    const role = el('select.select', { 'aria-label': 'Роль участника сделки' }, dictionarySelectOptions('teamRoles'));
+    const influence = el('select.select', { 'aria-label': 'Влияние участника сделки' }, dictionarySelectOptions('influence'));
     const bodyRows = rows.length ? rows.map((r) => {
-      const roleInput = el('input.input', { value: r.role || '', disabled: !canWrite(store.user),
-        onchange: (e) => save(rows.map((x) => x.contactId === r.contactId ? { ...x, role: e.target.value } : x)) });
+      const roleInput = el('select.select', { disabled: !canWrite(store.user),
+        onchange: (e) => save(rows.map((x) => x.contactId === r.contactId ? { ...x, role: e.target.value } : x)) }, dictionarySelectOptions('teamRoles', r.role || ''));
       const influenceSelect = el('select.select', { disabled: !canWrite(store.user),
         onchange: (e) => save(rows.map((x) => x.contactId === r.contactId ? { ...x, influence: e.target.value } : x)) },
-        ['', 'За нас', 'Нейтрален', 'Против нас'].map((v) => el('option', { value: v, selected: v === (r.influence || '') }, v || 'Не указано')));
+        dictionarySelectOptions('influence', r.influence || ''));
       return el('tr', {}, el('td', {}, store.contactById(r.contactId)?.name || '—'), el('td', {}, roleInput), el('td', {}, influenceSelect),
         el('td', {}, canWrite(store.user) && actionButton('Удалить', () => save(rows.filter((x) => x.contactId !== r.contactId)), { iconName: 'trash' })));
     }) : [el('tr', {}, el('td', { colspan: 4 }, 'Участники не добавлены'))];
@@ -135,10 +142,10 @@ export function pipelineMvpView({ params, navigate }) {
     const rows = store.salesTeamFor(deal.id);
     const save = (team) => store.setSalesTeam(deal.id, team.filter((row) => row.dealId === deal.id));
     const employee = el('select.select', {}, el('option', { value: '' }, 'Сотрудник'), store.employees.filter((e) => !rows.some((r) => r.employeeId === e.id)).map((e) => el('option', { value: e.id }, e.name)));
-    const role = el('input.input', { placeholder: 'Роль в сделке' });
+    const role = el('select.select', { 'aria-label': 'Роль сотрудника в сделке' }, dictionarySelectOptions('salesRoles'));
     const bodyRows = rows.length ? rows.map((r) => {
-      const roleInput = el('input.input', { value: r.role || '', disabled: !canWrite(store.user),
-        onchange: (e) => save(store.salesTeam.map((x) => x.id === r.id ? { ...x, role: e.target.value } : x)) });
+      const roleInput = el('select.select', { disabled: !canWrite(store.user),
+        onchange: (e) => save(store.salesTeam.map((x) => x.id === r.id ? { ...x, role: e.target.value } : x)) }, dictionarySelectOptions('salesRoles', r.role || ''));
       const primary = el('input', { type: 'radio', name: `primary-${deal.id}`, checked: r.primary, disabled: !canWrite(store.user),
         onchange: () => save(store.salesTeam.map((x) => x.dealId === deal.id ? { ...x, primary: x.id === r.id } : x)) });
       return el('tr', {}, el('td', {}, store.employeeById(r.employeeId)?.name || '—'), el('td', {}, roleInput), el('td', {}, primary),
@@ -181,6 +188,8 @@ export function pipelineMvpView({ params, navigate }) {
           ['Связанный лид', deal.sourceLeadId ? el('a.record-link', { href: `#/leads?id=${deal.sourceLeadId}` }, 'Открыть лид (справочно)') : 'Сделка создана напрямую'],
           ['Себестоимость / маржинальность', 'Зарезервировано для следующего этапа'],
         ])),
+      el('section.detail-section', {}, el('div.section-head', {}, el('h2.section-title', {}, 'Оценка вероятности')),
+        el('p.muted', {}, 'Зарезервированный блок MVP. Расчётная модель оценки (например, MEDDPICC) относится к следующему этапу.')),
       paymentsEditor(deal), participantsEditor(deal), salesTeamEditor(deal), relatedRecords('deal', id),
       el('section.detail-section', {}, el('div.section-head', {}, el('h2.section-title', {}, 'Системный реестр изменений стадии')),
         el('p.field-hint', {}, 'Все переходы сохраняются, включая возвраты и регрессы. Ограничения в 50 записей нет.'),

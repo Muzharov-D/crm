@@ -3,9 +3,10 @@ import { store } from '../lib/store.js';
 import { canWrite } from '../lib/access.js';
 import { openContactForm, openLeadForm, openDealForm } from '../ui/mvp-forms.js';
 import { pageHead, actionButton, emptyState, facts, relatedRecords, avandokEmpty } from '../ui/mvp-bits.js';
-import { exportXlsx } from '../lib/xlsx.js';
+import { exportXlsx, importRegistryXlsx } from '../lib/xlsx.js';
 import { fuzzyIncludes } from '../lib/util.js';
 import { confirmDialog } from '../ui/modal.js';
+import { toast } from '../ui/toast.js';
 
 export function contactsMvpView({ params, navigate }) {
   const root = el('div.view'); const id = params.get('id');
@@ -23,7 +24,13 @@ export function contactsMvpView({ params, navigate }) {
         el('td.num', {}, store.leadsFor({ contactId: c.id }).length), el('td.num', {}, store.dealsFor({ contactId: c.id }).length)))
         : [el('tr', {}, el('td', { colspan: 7 }, 'По фильтру ничего не найдено'))]));
     } rows();
+    const file = el('input', { type: 'file', accept: '.xlsx', hidden: true, onchange: async (e) => {
+      const selected = e.target.files[0]; if (!selected) return;
+      try { await store.saveSnapshot('XLSX импорт контактов'); const result = await importRegistryXlsx('contacts', selected); toast(`Импорт завершён: создано ${result.created}, обновлено ${result.updated}, пропущено ${result.skipped}`, { icon: 'check' }); }
+      catch (error) { console.error(error); toast(`Не удалось импортировать XLSX: ${error.message}`, { icon: 'alert' }); }
+    } });
     root.append(pageHead('Контакты', 'Люди и их принадлежность к контрагентам. Роли задаются в командах и сделках.',
+      canWrite(store.user) && file, canWrite(store.user) && actionButton('Импорт XLSX', () => file.click(), { iconName: 'upload' }),
       actionButton('Экспорт XLSX', () => exportXlsx('contacts', filtered()), { iconName: 'download' }),
       canWrite(store.user) && actionButton('Новый контакт', () => openContactForm(), { primary: true, iconName: 'plus' })),
       el('div.filter-bar', {}, search, el('span.filter-count', {}, `${filtered().length} из ${store.contacts.length}`)),

@@ -2,6 +2,7 @@ import { el, clear } from './dom.js';
 import { icon } from './icons.js';
 import { store } from '../lib/store.js';
 import { canWrite } from '../lib/access.js';
+import { dictionaryOptions } from '../lib/spec.js';
 import { formatDate, formatMoney, todayISO } from '../lib/util.js';
 import { openActivityForm, openTaskForm } from './mvp-forms.js';
 
@@ -52,36 +53,61 @@ export function eventsTable(events) {
       : el('tr', {}, el('td', { colspan: 3 }, 'Событий пока нет')))));
 }
 
-const ownerPresets = {
-  company: (id) => ({ companyId: id }), contact: (id) => ({ contactId: id }),
-  deal: (id) => ({ dealId: id }), lead: (id) => ({ leadId: id }), employee: (id) => ({ employeeId: id }),
-};
+function ownerPresets(kind, id) {
+  if (kind === 'deal') {
+    const deal = store.dealById(id);
+    return { dealId: id, companyId: deal?.companyId || null,
+      contactId: deal?.contactId || null, leadId: deal?.sourceLeadId || null };
+  }
+  if (kind === 'lead') {
+    const lead = store.leadById(id);
+    return { leadId: id, companyId: lead?.companyId || null, contactId: lead?.contactId || null };
+  }
+  if (kind === 'contact') {
+    const contact = store.contactById(id);
+    return { contactId: id, companyId: contact?.companyId || null };
+  }
+  if (kind === 'company') return { companyId: id };
+  return { employeeId: id };
+}
 
 /** Universal related records: field filters and creation without leaving the card. */
 export function relatedRecords(kind, id) {
-  const presets = ownerPresets[kind](id);
-  const search = el('input.input', { type: 'search', placeholder: 'Фильтр по описанию, событию или сотруднику', 'aria-label': 'Фильтр связанных записей' });
+  // Filter lists by the card itself; creation also inherits unambiguous parent links.
+  const filters = { company: { companyId: id }, contact: { contactId: id },
+    deal: { dealId: id }, lead: { leadId: id }, employee: { employeeId: id } }[kind];
+  const presets = ownerPresets(kind, id);
+  const search = el('input.input', { type: 'search', placeholder: 'Описание, событие или сотрудник', 'aria-label': 'Фильтр связанных записей' });
   const status = el('select.select', { 'aria-label': 'Статус связанной задачи' },
-    el('option', { value: '' }, 'Все статусы задач'), el('option', { value: 'К выполнению' }, 'К выполнению'),
-    el('option', { value: 'В работе' }, 'В работе'), el('option', { value: 'Выполнено' }, 'Выполнено'));
+    dictionaryOptions(store.settings, 'taskStatuses', { empty: 'Все статусы задач' })
+      .map((o) => el('option', { value: o.value }, o.label)));
+  const employee = el('select.select', { 'aria-label': 'Сотрудник связанной записи' },
+    el('option', { value: '' }, 'Все сотрудники'), store.employees.map((e) => el('option', { value: e.id }, e.name)));
+  const from = el('input.input', { type: 'date', 'aria-label': 'Связанные записи с даты' });
+  const to = el('input.input', { type: 'date', 'aria-label': 'Связанные записи по дату' });
   const body = el('div');
   const render = () => {
     const query = search.value.trim().toLowerCase();
-    const match = (r) => !query || `${r.title || ''} ${r.summary || ''} ${r.notes || ''} ${store.employeeById(r.employeeId)?.name || ''}`.toLowerCase().includes(query);
-    const tasks = store.tasksFor(presets).filter((t) => match(t) && (!status.value || (t.status || '') === status.value));
-    const events = store.activitiesFor(presets).filter(match);
+    const match = (r, date) => (!query || `${r.title || ''} ${r.summary || ''} ${r.notes || ''} ${store.employeeById(r.employeeId)?.name || ''}`.toLowerCase().includes(query))
+      && (!employee.value || r.employeeId === employee.value)
+      && (!from.value || (date && date >= from.value)) && (!to.value || (date && date <= to.value));
+    const tasks = store.tasksFor(filters).filter((t) => match(t, t.due)
+      && (!status.value || (t.status || 'К выполнению') === status.value));
+    const events = store.activitiesFor(filters).filter((a) => match(a, a.date));
     clear(body).append(
       el('h3.related-subtitle', {}, `Задачи · ${tasks.length}`), tasksTable(tasks),
       el('h3.related-subtitle', {}, `События · ${events.length}`), eventsTable(events));
   };
-  search.addEventListener('input', render); status.addEventListener('change', render); render();
+  search.addEventListener('input', render);
+  for (const control of [status, employee, from, to]) control.addEventListener('change', render);
+  render();
   return el('section.detail-section', {},
     el('div.section-head', {}, el('h2.section-title', {}, 'Связанные записи'),
       canWrite(store.user) && el('div.view-actions', {},
         actionButton('Задача', () => openTaskForm(null, { presets }), { iconName: 'plus' }),
         actionButton('Событие', () => openActivityForm(null, { presets }), { iconName: 'plus' }))),
-    el('div.related-filters', {}, search, status), body,
-    el('p.field-hint', {}, `Новые записи получают связь автоматически. Дата создания — ${todayISO()}; ответственный по умолчанию — текущий сотрудник.`));
+    el('div.related-filters', {}, search, status, employee, from, to), body,
+    el('p.field-hint', {}, `Новые записи получают связь автоматически, включая однозначные связи родительских объектов. Дата создания — ${todayISO()}; ответственный по умолчанию — текущий сотрудник.`));
 }
 
 export function money(value) { return formatMoney(value || 0, store.settings.currency || 'RUB'); }

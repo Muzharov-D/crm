@@ -13,6 +13,7 @@ const byName = (rows) => [...rows].sort((a, b) => a.name.localeCompare(b.name, '
 const recordOptions = (rows, empty = 'Не выбрано') => [
   { value: '', label: empty }, ...byName(rows).map((r) => ({ value: r.id, label: r.name })),
 ];
+const companiesWithRole = (role, currentIds = []) => store.companies.filter((c) => c.role === role || currentIds.includes(c.id));
 const dictOptions = (key, current = '', parent = null, empty = 'Не указано') =>
   withCurrent(dictionaryOptions(store.settings, key, { parent, empty }), current);
 const val = (input) => input.value || null;
@@ -121,7 +122,7 @@ export function openLeadForm(lead = null, { presets = {}, onSaved = null } = {})
   const source = makeSelect(dictOptions('leadSources', data.source), data.source || '');
   const contact = makeSelect(recordOptions(store.contacts, 'Без контакта'), data.contactId || '');
   const company = makeSelect(recordOptions(store.companies, 'Без контрагента'), data.companyId || '');
-  const partner = makeSelect(recordOptions(store.companies, 'Без партнёра'), data.partnerId || '');
+  const partner = makeSelect(recordOptions(companiesWithRole('Партнёр-интегратор', [data.partnerId]), 'Без партнёра'), data.partnerId || '');
   const employee = makeSelect(recordOptions(store.employees, 'Не назначен'), data.employeeId || store.currentEmployee()?.id || '');
   const { product, subproduct } = productFields(data);
   const budget = textInput({ value: data.preliminaryBudget || '', type: 'number', min: 0, step: '0.01', inputmode: 'decimal' });
@@ -154,14 +155,14 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
   const company = makeSelect(recordOptions(store.companies, 'Выберите контрагента'), data.companyId || '');
   company.select.required = true;
   const contact = makeSelect(recordOptions(store.contacts, 'Без основного контакта'), data.contactId || '');
-  const partner = makeSelect(recordOptions(store.companies, 'Без партнёра'), data.partnerId || '');
+  const partner = makeSelect(recordOptions(companiesWithRole('Партнёр-интегратор', [data.partnerId]), 'Без партнёра'), data.partnerId || '');
   const { product, subproduct } = productFields(data);
   const stages = store.stages().map((s) => ({ value: s.id, label: s.label }));
   const stage = makeSelect(stages, data.stage || store.firstStage());
   const status = makeSelect(dictOptions('dealStatuses', data.status || 'Новая'), data.status || 'Новая');
   const probability = makeSelect(dictOptions('probabilityCategories', data.probabilityCategory), data.probabilityCategory || '');
   const competitors = el('select.select', { multiple: true, size: 3, 'aria-label': 'Конкуренты' },
-    byName(store.companies).map((c) => el('option', { value: c.id, selected: data.competitorIds?.includes(c.id) }, c.name)));
+    byName(companiesWithRole('Конкурент', data.competitorIds || [])).map((c) => el('option', { value: c.id, selected: data.competitorIds?.includes(c.id) }, c.name)));
   const risks = textArea({ value: data.risks || '', rows: 2 });
   const contractDate = textInput({ value: data.contractDate || '', type: 'date' });
   const workStartDate = textInput({ value: data.workStartDate || '', type: 'date' });

@@ -44,14 +44,26 @@ export function exportXlsx(kind, rows = null, filename = '') {
         'Название': d.name, 'Контрагент': nameOf(store.companies, d.companyId), 'ИНН': store.companies.find((c) => c.id === d.companyId)?.inn || '',
         'Продукт': d.product, 'Подпродукт': d.subproduct,
         'Стадия': DEAL_STAGES.find((s) => s.id === d.stage)?.label || d.stage,
+        'Вероятность стадии, %': DEAL_STAGES.find((s) => s.id === d.stage)?.probability == null ? '' : Math.round(DEAL_STAGES.find((s) => s.id === d.stage).probability * 100),
         'Статус': d.status, 'Исход': d.outcome, 'Категория вероятности': d.probabilityCategory,
         'Сумма без НДС': totals.total, 'Текущий ФГ': totals.currentFY, 'Следующий ФГ': totals.nextFY,
         'Партнёр': nameOf(store.companies, d.partnerId), 'Контакт': nameOf(store.contacts, d.contactId),
         'Ответственный': nameOf(store.employees, store.salesTeam.find((r) => r.dealId === d.id && r.primary)?.employeeId),
+        'Команда продаж': store.salesTeam.filter((r) => r.dealId === d.id)
+          .map((r) => `${nameOf(store.employees, r.employeeId)}${r.primary ? ' (основной)' : ''}${r.role ? ` — ${r.role}` : ''}`).join('; '),
+        'Участники контрагента': (d.contacts || []).map((r) => `${nameOf(store.contacts, r.contactId)}${r.role ? ` — ${r.role}` : ''}${r.influence ? ` — ${r.influence}` : ''}`).join('; '),
+        'Экономический покупатель': nameOf(store.contacts, d.economicBuyerContactId),
+        'Кто продвигает': nameOf(store.contacts, d.championContactId),
+        'Конкуренты': (d.competitorIds || []).map((id) => nameOf(store.companies, id)).filter(Boolean).join('; '),
+        'Событие заказчика': d.clientEvent, 'Дата события заказчика': d.clientEventDate,
+        'Что клиент вложил': d.clientInvestment, 'Бюджет': d.budget, 'Тип покупки': d.purchaseType,
+        'Последнее событие': store.lastDealEvent(d.id)?.summary || '',
         'Следующий шаг': d.nextStepText, 'Дата следующего шага': d.nextStepDate,
         'Дата договора': d.contractDate, 'Дата старта работ': d.workStartDate,
+        'Дата создания': d.createdAt ? todayISO(new Date(d.createdAt)) : '',
         'Дата закрытия': d.closedAt ? todayISO(new Date(d.closedAt)) : '', 'Причина закрытия': d.closeReason,
         'Кто выиграл': d.winner, 'Риски': d.risks, 'Комментарий': d.notes,
+        'Исходный лид': nameOf(store.leads, d.sourceLeadId),
       };
     });
   } else if (kind === 'leads') {
@@ -78,6 +90,15 @@ export function exportXlsx(kind, rows = null, filename = '') {
   }
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(sheetRows), kind === 'deals' ? 'Сделки' : kind === 'leads' ? 'Лиды' : kind === 'companies' ? 'Контрагенты' : kind === 'contacts' ? 'Контакты' : 'Сотрудники');
+  if (kind === 'deals') {
+    const dealIds = new Set(data.map((d) => d.id));
+    const paymentRows = store.payments.filter((p) => dealIds.has(p.dealId)).map((p) => ({
+      'Сделка': nameOf(store.deals, p.dealId), 'Год ФГ': p.fiscalYear, 'Квартал': p.quarter,
+      'Сумма без НДС': p.amount, 'Тип': p.type, 'Статус': p.status,
+      'Дата оплаты': p.paymentDate, 'Дата акта': p.actDate,
+    }));
+    XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(paymentRows), 'Платежи');
+  }
   const output = XLSX.write(book, { type: 'array', bookType: 'xlsx', compression: true });
   downloadFile(filename || `${kind}-${todayISO()}.xlsx`, output, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
@@ -86,6 +107,56 @@ function stageId(value) {
   const text = normalized(value);
   if (!text) return '';
   return DEAL_STAGES.find((s) => normalized(s.id) === text || normalized(s.label) === text || text.startsWith(normalized(s.id)))?.id || '';
+}
+
+async function workbookRows(file) {
+  const book = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
+  const sheet = book.Sheets[book.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(sheet, { defval: '' });
+}
+
+/** Import company/contact registries exported by CRM or maintained in a plain XLSX table. */
+export async function importRegistryXlsx(kind, file) {
+  if (!['companies', 'contacts'].includes(kind)) throw new Error('Этот реестр не поддерживает импорт XLSX');
+  const rows = await workbookRows(file);
+  let created = 0; let updated = 0; let skipped = 0;
+  const parents = [];
+  for (const row of rows) {
+    if (kind === 'companies') {
+      const name = clean(cell(row, ['Название', 'Контрагент', 'Компания', 'Организация']));
+      if (!name) { skipped++; continue; }
+      const inn = clean(cell(row, ['ИНН']));
+      let company = store.companies.find((c) => (inn && c.inn === inn) || normalized(c.name) === normalized(name));
+      const payload = {
+        name, inn, role: clean(cell(row, ['Роль', 'Роль контрагента'])),
+        industry: clean(cell(row, ['Отрасль'])), website: clean(cell(row, ['Сайт'])),
+        notes: clean(cell(row, ['Комментарий', 'Примечание'])),
+      };
+      if (company) { await store.updateCompany(company.id, payload); updated++; }
+      else { company = await store.addCompany(payload); created++; }
+      parents.push({ company, name: clean(cell(row, ['Головная структура', 'Головная компания'])) });
+    } else {
+      const name = clean(cell(row, ['ФИО', 'Контакт', 'Имя']));
+      if (!name) { skipped++; continue; }
+      const companyName = clean(cell(row, ['Контрагент', 'Компания', 'Организация']));
+      let company = store.companies.find((c) => companyName && normalized(c.name) === normalized(companyName));
+      if (!company && companyName) company = await store.addCompany({ name: companyName, role: 'Клиент' });
+      const email = clean(cell(row, ['Email', 'E-mail', 'Почта']));
+      const phone = clean(cell(row, ['Телефон', 'Тел']));
+      let contact = store.contacts.find((c) => (email && normalized(c.email) === normalized(email))
+        || (phone && clean(c.phone) === phone)
+        || (normalized(c.name) === normalized(name) && (c.companyId || null) === (company?.id || null)));
+      const payload = { name, title: clean(cell(row, ['Должность'])), phone, email,
+        companyId: company?.id || null, notes: clean(cell(row, ['Комментарий', 'Примечание'])) };
+      if (contact) { await store.updateContact(contact.id, payload); updated++; }
+      else { await store.addContact(payload); created++; }
+    }
+  }
+  for (const { company, name } of parents) {
+    const parent = store.companies.find((c) => c.id !== company.id && normalized(c.name) === normalized(name));
+    if ((parent?.id || null) !== (company.parentCompanyId || null)) await store.updateCompany(company.id, { parentCompanyId: parent?.id || null });
+  }
+  return { created, updated, skipped, total: rows.length };
 }
 
 /** Import the current pipeline from the first worksheet. Existing amounts are never duplicated. */

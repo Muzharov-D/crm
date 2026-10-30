@@ -46,6 +46,8 @@ describe('MVP v2.1 lead and deal rules', () => {
     await expect(store.convertLeadToDeal(lead.id)).rejects.toThrow('уже переведён');
     await store.updateLead(lead.id, { product: 'ИИ', subproduct: 'Ассистент' });
     expect(store.dealById(deal.id)).toMatchObject({ product: 'Платформа', subproduct: 'CRM' });
+    const withoutCompany = await store.addLead({ name: 'Без контрагента', status: 'Квалифицирован' });
+    await expect(store.convertLeadToDeal(withoutCompany.id)).rejects.toThrow('укажите контрагента');
   });
 
   it('does not reopen a disqualified lead', async () => {
@@ -76,8 +78,14 @@ describe('MVP v2.1 lead and deal rules', () => {
     const store = await freshStore();
     const deal = await store.addDeal({ name: 'Сделка', stage: 's5' });
     await expect(store.updateDeal(deal.id, { outcome: 'Проиграна' })).rejects.toThrow('кто выиграл');
-    await store.updateDeal(deal.id, { outcome: 'Проиграна', winner: 'Конкурент' });
+    await expect(store.updateDeal(deal.id, { outcome: 'Проиграна', winner: 'Конкурент' })).rejects.toThrow('причину');
+    await store.updateDeal(deal.id, { outcome: 'Проиграна', winner: 'Конкурент', closeReason: 'Проиграли конкуренту — цена' });
     expect(store.dealById(deal.id)).toMatchObject({ stage: 's5', outcome: 'Проиграна', winner: 'Конкурент' });
+    await store.updateDeal(deal.id, { outcome: 'Выиграна' });
+    expect(store.dealById(deal.id)).toMatchObject({ stage: 's8', outcome: 'Выиграна' });
+    await store.moveDeal(deal.id, 's9', { preserveOutcome: true });
+    expect(store.dealById(deal.id)).toMatchObject({ stage: 's9', outcome: 'Выиграна' });
+    expect(store.dealById(deal.id).closedAt).toBeTypeOf('number');
     await expect(store.addActivity({ summary: 'Будущее', date: '2999-01-01', dealId: deal.id }))
       .rejects.toThrow('будущим');
     const activity = await store.addActivity({ summary: 'Прошлое', date: '2026-01-10', dealId: deal.id });
@@ -118,6 +126,22 @@ describe('MVP v2.1 payments and append-only history', () => {
 });
 
 describe('MVP v2.1 delete, merge and restore links', () => {
+  it('edits one company team without reassigning other companies’ team rows', async () => {
+    const store = await freshStore();
+    const first = await store.addCompany({ name: 'Первая' });
+    const second = await store.addCompany({ name: 'Вторая' });
+    const a = await store.addContact({ name: 'A', companyId: first.id });
+    const b = await store.addContact({ name: 'B', companyId: second.id });
+    await store.setCompanyTeam(first.id, [{ contactId: a.id, role: 'Чемпион' }]);
+    await store.setCompanyTeam(second.id, [{ contactId: b.id, role: 'ИБ' }]);
+    const foreign = store.companyTeamFor(second.id)[0];
+    await store.setCompanyTeam(first.id, [...store.companyTeam,
+      { companyId: first.id, contactId: b.id, role: 'Закупки' }]);
+    expect(store.companyTeamFor(first.id)).toHaveLength(2);
+    expect(store.companyTeamFor(second.id)).toHaveLength(1);
+    expect(store.companyTeamFor(second.id)[0]).toMatchObject({ id: foreign.id, companyId: second.id, contactId: b.id });
+  });
+
   it('restores every company link, including partner, competitor, child and team rows', async () => {
     const store = await freshStore();
     const company = await store.addCompany({ name: 'Головная' });

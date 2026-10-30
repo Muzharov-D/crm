@@ -199,7 +199,7 @@ describe('deal stage lifecycle', () => {
     Object.assign(store.dealById(d.id), { closedAt: june, stageHistory: [{ stage: 'won', at: june }] });
 
     const before = Date.now();
-    await store.updateDeal(d.id, { outcome: 'Проиграна', winner: 'Конкурент' });
+    await store.updateDeal(d.id, { outcome: 'Проиграна', winner: 'Конкурент', closeReason: 'Проиграли конкуренту — цена' });
 
     const after = store.dealById(d.id);
     // The loss happened now, not in June: leaving June on it would rewrite
@@ -240,9 +240,10 @@ describe('deal stage lifecycle', () => {
     expect(open.closeReason).toBe('');
     expect(open.closeReasonNote).toBe('');
 
-    // The point of clearing it: this loss must not inherit a winning reason.
-    await store.updateDeal(d.id, { outcome: 'Проиграна', winner: 'Конкурент' });
-    expect(store.dealById(d.id).closeReason).toBe('');
+    // The point of clearing it: this loss must not inherit a winning reason;
+    // the user explicitly supplies the new mandatory loss reason.
+    await store.updateDeal(d.id, { outcome: 'Проиграна', winner: 'Конкурент', closeReason: 'Проиграли конкуренту — цена' });
+    expect(store.dealById(d.id).closeReason).toBe('Проиграли конкуренту — цена');
   });
 
   it('keeps the close reason across an edit and a won-to-lost correction', async () => {

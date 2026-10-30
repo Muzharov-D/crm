@@ -4,9 +4,10 @@ import { canWrite } from '../lib/access.js';
 import { dictionaryOptions, dealTotals } from '../lib/spec.js';
 import { openCompanyForm, openContactForm, openDealForm, openLeadForm } from '../ui/mvp-forms.js';
 import { pageHead, actionButton, emptyState, facts, relatedRecords, avandokEmpty, money } from '../ui/mvp-bits.js';
-import { exportXlsx } from '../lib/xlsx.js';
+import { exportXlsx, importRegistryXlsx } from '../lib/xlsx.js';
 import { fuzzyIncludes } from '../lib/util.js';
 import { confirmDialog } from '../ui/modal.js';
+import { toast } from '../ui/toast.js';
 
 export function companiesMvpView({ params, navigate }) {
   const root = el('div.view'); const id = params.get('id');
@@ -29,7 +30,13 @@ export function companiesMvpView({ params, navigate }) {
         : [el('tr', {}, el('td', { colspan: 8 }, 'По фильтрам ничего не найдено'))]));
     }
     rows();
+    const file = el('input', { type: 'file', accept: '.xlsx', hidden: true, onchange: async (e) => {
+      const selected = e.target.files[0]; if (!selected) return;
+      try { await store.saveSnapshot('XLSX импорт контрагентов'); const result = await importRegistryXlsx('companies', selected); toast(`Импорт завершён: создано ${result.created}, обновлено ${result.updated}, пропущено ${result.skipped}`, { icon: 'check' }); }
+      catch (error) { console.error(error); toast(`Не удалось импортировать XLSX: ${error.message}`, { icon: 'alert' }); }
+    } });
     root.append(pageHead('Контрагенты', 'Клиенты, партнёры-интеграторы и конкуренты',
+      canWrite(store.user) && file, canWrite(store.user) && actionButton('Импорт XLSX', () => file.click(), { iconName: 'upload' }),
       actionButton('Экспорт XLSX', () => exportXlsx('companies', filtered()), { iconName: 'download' }),
       canWrite(store.user) && actionButton('Новый контрагент', () => openCompanyForm(), { primary: true, iconName: 'plus' })),
       el('div.filter-bar', {}, search, role, count),
@@ -45,7 +52,8 @@ export function companiesMvpView({ params, navigate }) {
       const rows = store.companyTeamFor(company.id);
       clear(body).append(...(rows.length ? rows.map((r) => {
         const contact = el('select.select', { onchange: (e) => save(store.companyTeam.map((x) => x.id === r.id ? { ...x, contactId: e.target.value } : x)) },
-          store.contacts.map((c) => el('option', { value: c.id, selected: c.id === r.contactId }, c.name)));
+          store.contacts.filter((c) => c.companyId === company.id || c.id === r.contactId)
+            .map((c) => el('option', { value: c.id, selected: c.id === r.contactId }, c.name)));
         const role = el('select.select', { onchange: (e) => save(store.companyTeam.map((x) => x.id === r.id ? { ...x, role: e.target.value } : x)) },
           dictionaryOptions(store.settings, 'teamRoles').map((o) => el('option', { value: o.value, selected: o.value === r.role }, o.label)));
         const influence = el('select.select', { onchange: (e) => save(store.companyTeam.map((x) => x.id === r.id ? { ...x, influence: e.target.value } : x)) },
@@ -58,7 +66,7 @@ export function companiesMvpView({ params, navigate }) {
       for (const input of body.querySelectorAll('input')) input.disabled = !canWrite(store.user);
     };
     rowNodes();
-    const contact = el('select.select', {}, el('option', { value: '' }, 'Контакт'), store.contacts.map((c) => el('option', { value: c.id }, c.name)));
+    const contact = el('select.select', {}, el('option', { value: '' }, 'Контакт'), store.contacts.filter((c) => c.companyId === company.id).map((c) => el('option', { value: c.id }, c.name)));
     const role = el('select.select', {}, dictionaryOptions(store.settings, 'teamRoles').map((o) => el('option', { value: o.value }, o.label)));
     const influence = el('select.select', {}, dictionaryOptions(store.settings, 'influence').map((o) => el('option', { value: o.value }, o.label)));
     const comment = el('input.input', { placeholder: 'Комментарий' });

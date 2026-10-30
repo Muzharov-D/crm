@@ -1,7 +1,7 @@
 import { el, clear, keepingFocus } from '../ui/dom.js';
 import { store } from '../lib/store.js';
-import { DEAL_STAGES, LEAD_STAGES, fiscalYearAt, cohortConversion, stageRegressions, currentStageConversion, dictionaryOptions } from '../lib/spec.js';
-import { EMPTY_REPORT_FILTERS, filterDeals, companiesWithoutPartnerDeals, funnelReport, paymentForecast, probabilityBreakdown, topOpenDeals, planKey } from '../lib/reporting.js';
+import { DEAL_STAGES, LEAD_STAGES, fiscalYearAt, cohortConversion, stageRegressions, currentStageConversion, dictionary, dictionaryOptions } from '../lib/spec.js';
+import { EMPTY_REPORT_FILTERS, filterDeals, funnelReport, paymentForecast, probabilityBreakdown, productBreakdown, topOpenDeals, planKey } from '../lib/reporting.js';
 import { pageHead, actionButton, money } from '../ui/mvp-bits.js';
 import { exportXlsx } from '../lib/xlsx.js';
 import { canWrite } from '../lib/access.js';
@@ -19,8 +19,7 @@ export function reportsView() {
     root.append(pageHead('Отчётность', 'План, прогноз и конверсия по единым фильтрам MVP v2.1',
       actionButton('Сделки XLSX', () => exportXlsx('deals', deals), { iconName: 'download' }),
       actionButton('Сбросить фильтры', () => { Object.assign(state, EMPTY_REPORT_FILTERS); render(); }, { iconName: 'reset' })), filters);
-    if (state.withoutPartnerDeals && state.partnerId) root.append(withoutPartner());
-    root.append(forecastSection(forecast), funnelSection(deals), conversionSection(deals), categorySection(deals), topSection(deals), cohortSection(deals));
+    root.append(forecastSection(forecast), productSection(deals), funnelSection(deals), conversionSection(deals), categorySection(deals), topSection(deals), cohortSection(deals));
   });
 
   function select(label, key, options) {
@@ -40,7 +39,7 @@ export function reportsView() {
       el('label.report-filter', {}, el('span', {}, 'Следующий шаг от'), el('input.input', { type: 'date', value: state.nextFrom, onchange: (e) => { state.nextFrom = e.target.value; render(); } })),
       el('label.report-filter', {}, el('span', {}, 'Следующий шаг до'), el('input.input', { type: 'date', value: state.nextTo, onchange: (e) => { state.nextTo = e.target.value; render(); } })),
       el('label.report-filter', {}, el('span', {}, 'Финансовый год'), el('input.input', { type: 'number', min: 2000, max: 2200, value: state.fiscalYear, onchange: (e) => { state.fiscalYear = Number(e.target.value) || fiscalYearAt(); render(); } })),
-      el('label.check-label.partner-mode', {}, el('input', { type: 'checkbox', checked: state.withoutPartnerDeals, onchange: (e) => { state.withoutPartnerDeals = e.target.checked; render(); } }), ' Показать без сделок выбранного партнёра'));
+      el('label.check-label.partner-mode', {}, el('input', { type: 'checkbox', checked: state.withoutPartnerDeals, disabled: !state.partnerId, onchange: (e) => { state.withoutPartnerDeals = e.target.checked; render(); } }), ' Исключить сделки выбранного партнёра'));
   }
   function planFor({ fiscalYear, quarter, type }) {
     const key = planKey({ fiscalYear, quarter, type, product: state.product, subproduct: state.subproduct });
@@ -58,6 +57,15 @@ export function reportsView() {
             el('td.num', {}, money(r.raw)), el('td.num', {}, money(r.weighted)), el(`td.num.${r.gap < 0 ? 'negative' : 'positive'}`, {}, money(r.gap)));
         })))),
       el('p.field-hint', {}, 'План сохраняется для выбранного ФГ, квартала, типа и текущего разреза продукта/подпродукта. S1 не имеет расчётного процента и не даёт взвешенной суммы.'));
+  }
+  function productSection(deals) {
+    const rows = productBreakdown(deals, store.payments, state.fiscalYear,
+      dictionary(store.settings, 'products'), dictionary(store.settings, 'subproducts'));
+    return el('section.detail-section', {}, el('div.section-head', {}, el('h2.section-title', {}, 'Продукты и подпродукты'),
+      el('span.muted', {}, `Платежи ФГ${String(state.fiscalYear).slice(-2)} · открытые сделки`)),
+      el('div.table-wrap', {}, el('table.data-table.compact', {}, el('thead', {}, el('tr', {}, ['Продукт', 'Подпродукт', 'Сделок', 'Сырая сумма', 'Взвешенная сумма'].map((h) => el('th', {}, h)))),
+        el('tbody', {}, rows.map((r) => el('tr', {}, el('td', {}, r.product), el('td', {}, r.subproduct),
+          el('td.num', {}, r.deals.length), el('td.num', {}, money(r.raw)), el('td.num', {}, money(r.weighted))))))));
   }
   function funnelSection(deals) {
     const rows = funnelReport(deals);
@@ -77,12 +85,13 @@ export function reportsView() {
         el('tbody', {}, probabilityBreakdown(deals).map((r) => el('tr', {}, el('td', {}, r.category), el('td.num', {}, r.count), el('td.num', {}, money(r.raw)), el('td.num', {}, money(r.weighted))))))));
   }
   function topSection(deals) {
-    const rows = topOpenDeals(deals, 20);
-    return el('section.detail-section', {}, el('div.section-head', {}, el('h2.section-title', {}, 'Топ-20 открытых сделок периода')),
-      el('div.table-wrap', {}, el('table.data-table.compact', {}, el('thead', {}, el('tr', {}, ['#', 'Сделка', 'Контрагент', 'Стадия', 'Сумма', 'Следующий шаг'].map((h) => el('th', {}, h)))),
+    const rows = topOpenDeals(deals, store.payments, state.fiscalYear, 20);
+    return el('section.detail-section', {}, el('div.section-head', {}, el('h2.section-title', {}, 'Топ-20 открытых сделок периода'),
+      el('span.muted', {}, `ФГ${String(state.fiscalYear).slice(-2)} · сумма периода, затем категория вероятности`)),
+      el('div.table-wrap', {}, el('table.data-table.compact', {}, el('thead', {}, el('tr', {}, ['#', 'Сделка', 'Контрагент', 'Стадия', 'Категория', 'Сумма периода', 'Следующий шаг'].map((h) => el('th', {}, h)))),
         el('tbody', {}, rows.length ? rows.map((d, i) => el('tr', {}, el('td.num', {}, i + 1), el('td', {}, el('a.record-link', { href: `#/pipeline?id=${d.id}` }, d.name)),
-          el('td', {}, store.companyById(d.companyId)?.name || '—'), el('td', {}, d.stage.toUpperCase()), el('td.num', {}, money(d.value)),
-          el('td', {}, `${d.nextStepText || '—'}${d.nextStepDate ? ` · ${d.nextStepDate}` : ''}`))) : el('tr', {}, el('td', { colspan: 6 }, 'Открытых сделок нет'))))));
+          el('td', {}, store.companyById(d.companyId)?.name || '—'), el('td', {}, d.stage.toUpperCase()), el('td', {}, d.probabilityCategory || '—'), el('td.num', {}, money(d.periodValue)),
+          el('td', {}, `${d.nextStepText || '—'}${d.nextStepDate ? ` · ${d.nextStepDate}` : ''}`))) : el('tr', {}, el('td', { colspan: 7 }, 'В выбранном ФГ нет открытых сделок с платежами'))))));
   }
   function cohortSection(deals) {
     const dealResult = cohortConversion(deals, store.dealStageHistory, { stages: DEAL_STAGES, fromStage: state.cohortFromStage, toStage: state.cohortToStage, from: state.cohortFrom, to: state.cohortTo, ownerKey: 'dealId' });
@@ -102,11 +111,6 @@ export function reportsView() {
         el('div', {}, el('span', {}, 'Регресс сделок'), el('strong', {}, `${dealRegress.transitions} переходов / ${dealRegress.records} сделок`)),
         el('div', {}, el('span', {}, 'Регресс лидов'), el('strong', {}, `${leadRegress.transitions} переходов / ${leadRegress.records} лидов`))),
       el('p.field-hint', {}, 'Когорта строится по первому входу в стадию. Повторные входы не дублируют запись, откат не уменьшает максимальный прогресс; регресс показан отдельно.'));
-  }
-  function withoutPartner() {
-    const companies = companiesWithoutPartnerDeals(store.companies, store.deals, state.partnerId);
-    return el('section.detail-section', {}, el('div.section-head', {}, el('h2.section-title', {}, `Контрагенты без сделок партнёра «${store.companyById(state.partnerId)?.name || ''}»`)),
-      companies.length ? el('div.link-list', {}, companies.map((c) => el('a.person-row', { href: `#/companies?id=${c.id}` }, c.name))) : el('p.muted', {}, 'Таких контрагентов нет.'));
   }
   render(); const onChange = () => render(); store.addEventListener('change', onChange);
   root.destroy = () => store.removeEventListener('change', onChange); return root;

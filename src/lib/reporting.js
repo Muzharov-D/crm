@@ -12,7 +12,9 @@ export function filterDeals(deals, filters = EMPTY_REPORT_FILTERS, salesTeam = [
     && (!filters.stage || d.stage === filters.stage)
     && (!filters.status || d.status === filters.status)
     && (!filters.probabilityCategory || d.probabilityCategory === filters.probabilityCategory)
-    && (!filters.partnerId || filters.withoutPartnerDeals || d.partnerId === filters.partnerId)
+    && (!filters.partnerId || (filters.withoutPartnerDeals
+      ? d.partnerId !== filters.partnerId
+      : d.partnerId === filters.partnerId))
     && (!filters.employeeId || salesTeam.some((r) => r.dealId === d.id && r.employeeId === filters.employeeId))
     && (!filters.nextFrom || (d.nextStepDate && d.nextStepDate >= filters.nextFrom))
     && (!filters.nextTo || (d.nextStepDate && d.nextStepDate <= filters.nextTo)));
@@ -56,8 +58,49 @@ export function probabilityBreakdown(deals) {
   });
 }
 
-export function topOpenDeals(deals, limit = 20) {
-  return deals.filter(isOpen).sort((a, b) => b.value - a.value).slice(0, limit);
+const probabilityRank = { 'Высокая': 0, 'Средняя': 1, 'Низкая': 2 };
+
+/** Open deals ranked by their payment amount in the selected financial year. */
+export function topOpenDeals(deals, payments = [], fiscalYear = null, limit = 20) {
+  return deals.filter(isOpen).map((deal) => {
+    const periodValue = fiscalYear
+      ? payments.filter((p) => p.dealId === deal.id && paymentBelongs(p, fiscalYear))
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+      : Number(deal.value) || 0;
+    return { ...deal, periodValue };
+  }).filter((deal) => !fiscalYear || deal.periodValue > 0)
+    .sort((a, b) => b.periodValue - a.periodValue
+      || (probabilityRank[a.probabilityCategory] ?? 3) - (probabilityRank[b.probabilityCategory] ?? 3)
+      || a.name.localeCompare(b.name, 'ru'))
+    .slice(0, limit);
+}
+
+/** Raw and weighted payment forecast for every product/subproduct dictionary value. */
+export function productBreakdown(deals, payments, fiscalYear, products = [], subproducts = []) {
+  const open = deals.filter(isOpen);
+  const keys = new Set();
+  const rows = [];
+  const add = (product, subproduct) => {
+    const key = `${product}\u0000${subproduct}`;
+    if (keys.has(key)) return;
+    keys.add(key);
+    const selected = open.filter((d) => (d.product || 'Не указан') === product
+      && (d.subproduct || 'Не указан') === subproduct);
+    const ids = new Set(selected.map((d) => d.id));
+    const paymentRows = payments.filter((p) => ids.has(p.dealId) && paymentBelongs(p, fiscalYear));
+    rows.push({
+      product, subproduct, deals: selected,
+      raw: paymentRows.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+      weighted: paymentRows.reduce((sum, p) => sum + (Number(p.amount) || 0)
+        * probabilityOf(open.find((d) => d.id === p.dealId), {}, DEAL_STAGES), 0),
+    });
+  };
+  for (const product of products) {
+    add(product, 'Не указан');
+    for (const row of subproducts.filter((s) => s.parent === product)) add(product, row.value);
+  }
+  for (const deal of open) add(deal.product || 'Не указан', deal.subproduct || 'Не указан');
+  return rows;
 }
 
 export function planKey({ fiscalYear, quarter, type, product = '', subproduct = '' }) {
