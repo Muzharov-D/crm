@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>CRM</title>
   <meta name="description" content="Контакты, компании, сделки, задачи и прогноз продаж." />
+  <meta name="referrer" content="no-referrer" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'self'" />
   <meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -15,16 +17,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="./favicon-16x16.png" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
   <link rel="manifest" href="./manifest.json" />
-  <script>
-    // Apply saved theme before first paint to avoid a flash.
-    (() => {
-      try {
-        // Light unless the person chose dark or "system".
-        const t = localStorage.getItem('crm:theme');
-        if (t !== 'system') document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
-      } catch {}
-    })();
-  </script>
+  <script src="./theme.js"></script>
   <!-- Our server's stand-in for the Puter SDK; defer keeps it ahead of the
        module script below (same in-order queue). -->
   <script src="./platform.js" defer></script>

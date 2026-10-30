@@ -90,7 +90,7 @@ async function boot() {
   startReminders(store);
   // Anything the network wouldn't take is replayed as soon as it will.
   startOfflineSync();
-  // A weekly safety copy in the user's own cloud, written quietly at
+  // A weekly safety copy on the CRM server, written quietly at
   // boot when the newest one has aged out. Never blocks the app.
   runBackupIfDue(store).catch(() => {});
   // First run on an empty dataset → guided start (or sample data).

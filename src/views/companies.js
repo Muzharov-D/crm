@@ -295,7 +295,7 @@ function companyDetail(id) {
           el('div.chip-row', {},
             company.website && el('a.chip', {
               href: /^https?:/i.test(company.website) ? company.website : `https://${company.website}`,
-              target: '_blank', rel: 'noopener',
+              target: '_blank', rel: 'noopener noreferrer',
             },
               el('span', { html: icon('globe', 13, 2) }),
               el('span.chip-label', {}, company.website)),

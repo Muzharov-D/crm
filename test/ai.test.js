@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
   aiAvailable, aiEnabled, readAIText, parseDraft, recordContext,
   contactPrompt, companyPrompt, emailPrompt, summaryPrompt, askAI,
@@ -10,20 +10,20 @@ afterEach(() => { delete globalThis.puter; });
 const withAI = (chat) => { globalThis.puter = { ai: { chat } }; };
 
 describe('availability', () => {
-  it('needs the platform capability to be there', () => {
+  it('stays disabled even when an external SDK is injected', () => {
     expect(aiAvailable()).toBe(false);
     globalThis.puter = {};
     expect(aiAvailable()).toBe(false);
     globalThis.puter = { ai: {} };
     expect(aiAvailable()).toBe(false);
     withAI(async () => 'hi');
-    expect(aiAvailable()).toBe(true);
+    expect(aiAvailable()).toBe(false);
   });
 
-  it('is on by default, off by switch, off without the platform', () => {
+  it('keeps every AI control off regardless of settings', () => {
     withAI(async () => 'hi');
-    expect(aiEnabled({})).toBe(true);
-    expect(aiEnabled({ aiAssist: true })).toBe(true);
+    expect(aiEnabled({})).toBe(false);
+    expect(aiEnabled({ aiAssist: true })).toBe(false);
     expect(aiEnabled({ aiAssist: false })).toBe(false);
     delete globalThis.puter;
     expect(aiEnabled({ aiAssist: true })).toBe(false);
@@ -51,23 +51,15 @@ describe('readAIText', () => {
 });
 
 describe('askAI', () => {
-  it('refuses when the platform has no model', async () => {
+  it('refuses when no model is present', async () => {
     await expect(askAI('hi')).rejects.toThrow('ai-unavailable');
   });
 
-  it('hands back the text', async () => {
-    withAI(async () => ({ message: { content: 'the answer' } }));
-    expect(await askAI('hi')).toBe('the answer');
-  });
-
-  it('treats an empty answer as a failure, so callers can say so', async () => {
-    withAI(async () => ({ message: { content: '   ' } }));
-    await expect(askAI('hi')).rejects.toThrow('ai-empty');
-  });
-
-  it('lets a platform error through as a failure', async () => {
-    withAI(async () => { throw new Error('offline'); });
-    await expect(askAI('hi')).rejects.toThrow('offline');
+  it('never calls an injected external model', async () => {
+    const chat = vi.fn(async () => ({ message: { content: 'the answer' } }));
+    withAI(chat);
+    await expect(askAI('private CRM data')).rejects.toThrow('ai-unavailable');
+    expect(chat).not.toHaveBeenCalled();
   });
 });
 

@@ -1,28 +1,17 @@
 /**
- * AI assist, on Puter's built-in models.
+ * Legacy AI prompt helpers, retained for their pure parsing tests.
  *
- * The app runs on Puter, where `puter.ai.chat` is available to the
- * signed-in user at no cost to this app - the one platform capability the
- * CRM never touched. Meanwhile the reason founders abandon a CRM is typing
- * into it. So: three narrow chores handed off, each one a button the user
- * pressed, each result landing in a field they can edit and nothing saved
- * on its own.
- *
- *   1. Paste to create - a signature or some scribbles become fields.
- *   2. Draft this email - a first pass into the same editable body.
- *   3. Catch me up - what a long timeline adds up to.
- *
- * Prompt building and response reading are pure functions (testable
- * without Puter); `askAI` is the only part that talks to the platform. No
- * model id is passed: Puter picks for the signed-in user, and naming a
- * model here would pin the app to one catalogue and break as it changes.
+ * This is an internal CRM: external AI is deliberately disabled. Even if a
+ * third-party SDK injects `puter.ai`, availability stays false and `askAI`
+ * rejects without calling it. CRM records must not leave the configured
+ * server through this module.
  */
 
 import { formatDate, formatMoney } from './util.js';
 
-/** Is the platform capability there at all? */
+/** External AI is not available in the internal deployment. */
 export function aiAvailable() {
-  return typeof puter !== 'undefined' && typeof puter?.ai?.chat === 'function';
+  return false;
 }
 
 /**
@@ -61,13 +50,8 @@ export function readAIText(response) {
  * Ask the model. Rejects with a plain Error on anything at all, so every
  * caller can fail the same way: a toast, and the form untouched.
  */
-export async function askAI(prompt, { system = null } = {}) {
-  if (!aiAvailable()) throw new Error('ai-unavailable');
-  const options = system ? { system } : undefined;
-  const answer = await puter.ai.chat(prompt, options);
-  const text = readAIText(answer);
-  if (!text) throw new Error('ai-empty');
-  return text;
+export async function askAI() {
+  throw new Error('ai-unavailable');
 }
 
 /* ---------- paste to create ---------- */

@@ -1,11 +1,16 @@
 /**
  * The slice of the Puter SDK this app uses, answered by our own server
  * (server/index.js) instead of the Puter cloud: sign-in, KV and files.
- * No puter.ai here, so the AI assist controls stay hidden.
+ * No puter.ai here: external AI is disabled for this internal CRM.
  */
 (() => {
+  const localURL = (url) => {
+    const target = new URL(url, location.origin);
+    if (target.origin !== location.origin) throw new Error('external-request-blocked');
+    return target.href;
+  };
   const api = async (url, options = {}) => {
-    const res = await fetch(url, { credentials: 'same-origin', ...options });
+    const res = await fetch(localURL(url), { credentials: 'same-origin', ...options });
     if (!res.ok) {
       const err = new Error(res.status === 404 ? 'not found' : `request failed: ${res.status}`);
       err.status = res.status;

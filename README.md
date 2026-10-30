@@ -7,7 +7,20 @@ The app comes from [HeyPuter/everything](https://github.com/HeyPuter/everything)
 - `server/` — Express: sign-in, data (KV), files (attachments and backups).
   Postgres when `DATABASE_URL` is set, otherwise files in `data/`.
 - `public/platform.js` — the part of the Puter SDK the app uses (`auth`, `kv`, `fs`),
-  answered by our server. AI assist is off: `puter.ai` is not provided.
+  answered by our server. External AI is disabled in code, even if an SDK is injected.
+
+### Network isolation
+
+Runtime browser requests are restricted to the CRM's own origin by the platform
+adapter, service worker, CSP meta tag, and server headers. There are no analytics,
+external fonts, CDN scripts, or third-party runtime APIs. AI controls stay off.
+Opening a company's website or an email draft is a user-initiated action; external
+website links use `noreferrer`. npm registry access is needed only to install
+build dependencies; SheetJS is vendored in `vendor/` and needs no runtime CDN.
+
+`DATABASE_URL` is the only configurable server-to-server connection. For a fully
+internal deployment, point it to Postgres on the private network or leave it unset
+to use local files under `DATA_DIR`.
 
 ## Local
 

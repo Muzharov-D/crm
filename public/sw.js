@@ -14,12 +14,12 @@
  * refreshed. So the first visit needs the network; every one after it
  * doesn't.
  *
- * What is never cached: Puter's own API. Auth and KV calls must fail fast
- * offline so the app's outbox takes over - a stale cached answer there
- * would be a lie about the user's data.
+ * Only this CRM's origin is cached or fetched. Cross-origin requests are
+ * rejected: the internal deployment has no third-party runtime services.
+ * Auth and API calls are never cached, so the outbox handles outages honestly.
  */
 
-const VERSION = 'v3';
+const VERSION = 'v4-internal';
 const SHELL = `crm-shell-${VERSION}`;
 const RUNTIME = `crm-runtime-${VERSION}`;
 
@@ -28,16 +28,11 @@ const SHELL_URLS = [
   './',
   './index.html',
   './manifest.json',
+  './theme.js',
+  './platform.js',
   './icon-192.png',
   './favicon.ico',
 ];
-
-/** Puter's own services: never served from cache. */
-const isPuterAPI = (url) => /(^|\.)puter\.(com|localhost)$/i.test(url.hostname)
-  && !/^js\./i.test(url.hostname);
-
-/** The SDK itself, from Puter's CDN: cacheable, and needed to boot at all. */
-const isPuterSDK = (url) => /^js\.puter\.com$/i.test(url.hostname);
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -58,9 +53,9 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
-/** Cache a response worth keeping; opaque ones count (the CDN script). */
+/** Cache a same-origin response worth keeping. */
 async function put(cacheName, request, response) {
-  if (!response || (response.status !== 200 && response.type !== 'opaque')) return;
+  if (!response || response.status !== 200) return;
   const cache = await caches.open(cacheName);
   await cache.put(request, response.clone()).catch(() => {});
 }
@@ -84,8 +79,11 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
-  if (isPuterAPI(url)) return;                    // let it fail, honestly
-  if (url.origin === self.location.origin && /^\/(api|login)(\/|$)/.test(url.pathname)) return;
+  if (url.origin !== self.location.origin) {
+    event.respondWith(new Response('External requests are disabled.', { status: 403 }));
+    return;
+  }
+  if (/^\/(api|login)(\/|$)/.test(url.pathname)) return;
 
   // A navigation offline gets the cached shell: the app is a hash router,
   // so index.html is every route.
@@ -105,7 +103,5 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.origin === self.location.origin || isPuterSDK(url)) {
-    event.respondWith(staleWhileRevalidate(request, RUNTIME));
-  }
+  event.respondWith(staleWhileRevalidate(request, RUNTIME));
 });
