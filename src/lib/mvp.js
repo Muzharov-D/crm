@@ -50,19 +50,33 @@ export function normalizeCompanyTeam(raw = {}) {
   };
 }
 
-/** Exactly one primary employee whenever a deal has a sales team. */
+/** Build the visible deal name without storing a second, divergent label. */
+export function composeDealName({ companyName = '', product = '', subproduct = '', topic = '' } = {}, fallback = '') {
+  const subject = text(topic);
+  if (!subject) return text(fallback);
+  return [companyName, product, subproduct, subject].map(text).filter(Boolean).join(' · ');
+}
+
+/**
+ * Employees own the primary assignment; contacts represent partners and other
+ * external members. Legacy employee-only rows keep their shape and meaning.
+ */
 export function normalizeSalesTeam(rows = [], dealId = null) {
   const out = [];
   const seen = new Set();
   for (const raw of Array.isArray(rows) ? rows : []) {
     if (!raw || typeof raw !== 'object') continue;
     const employeeId = link(raw.employeeId);
+    const contactId = link(raw.contactId);
     const rowDealId = link(raw.dealId || dealId);
-    if (!employeeId || !rowDealId || seen.has(`${rowDealId}\0${employeeId}`)) continue;
-    seen.add(`${rowDealId}\0${employeeId}`);
+    if ((!employeeId && !contactId) || (employeeId && contactId) || !rowDealId) continue;
+    const memberKey = employeeId ? `employee\0${employeeId}` : `contact\0${contactId}`;
+    if (seen.has(`${rowDealId}\0${memberKey}`)) continue;
+    seen.add(`${rowDealId}\0${memberKey}`);
     out.push({
-      ...raw, id: text(raw.id) || uid(), dealId: rowDealId, employeeId,
-      role: text(raw.role), primary: !!raw.primary, createdAt: stamp(raw.createdAt),
+      ...raw, id: text(raw.id) || uid(), dealId: rowDealId,
+      employeeId, contactId, role: text(raw.role),
+      primary: !!employeeId && !!raw.primary, createdAt: stamp(raw.createdAt),
     });
   }
   const byDeal = new Map();
@@ -73,10 +87,11 @@ export function normalizeSalesTeam(rows = [], dealId = null) {
   for (const team of byDeal.values()) {
     let found = false;
     for (const row of team) {
-      row.primary = !!row.primary && !found;
+      row.primary = !!row.employeeId && !!row.primary && !found;
       if (row.primary) found = true;
     }
-    if (team.length && !found) team[0].primary = true;
+    const firstEmployee = team.find((row) => row.employeeId);
+    if (firstEmployee && !found) firstEmployee.primary = true;
   }
   return out;
 }

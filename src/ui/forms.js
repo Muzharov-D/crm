@@ -71,6 +71,126 @@ export function makeSelect(options, value, props = {}) {
   return { wrap: el('div.select-wrap', {}, select), select };
 }
 
+/**
+ * Relationship picker with continuous name search. The real select keeps the
+ * existing form API (`select.value` and `change`), while the visible input is
+ * free text and never steals focus by rebuilding the surrounding form.
+ */
+export function searchSelect(initialOptions, value = '', props = {}) {
+  let options = [...initialOptions];
+  const {
+    placeholder = 'Начните вводить название', notFound = 'Такой записи нет в системе',
+    onCreate = null, createLabel = (query) => `Создать «${query}»`, disabled = false,
+    focusKey = '', limit = 50,
+  } = props;
+  const menuId = `relation-${++fieldSeq}`;
+  const select = el('select.select', { hidden: true, tabindex: -1, 'aria-hidden': 'true' });
+  const input = el('input.input.record-picker-input', {
+    type: 'text', value: '', placeholder, autocomplete: 'off', disabled,
+    role: 'combobox', 'aria-autocomplete': 'list', 'aria-controls': menuId,
+    'aria-expanded': 'false', dataset: focusKey ? { focusKey } : {},
+  });
+  const menu = el('div.record-picker-menu', { id: menuId, role: 'listbox', hidden: true });
+  const wrap = el('div.record-picker', {}, input, select, menu);
+  let current = '';
+  let matches = [];
+
+  const labelFor = (id) => options.find((option) => option.value === id && !option.options)?.label
+    || options.flatMap((option) => option.options || []).find((option) => option.value === id)?.label || '';
+  const flat = () => options.flatMap((option) => option.options || [option]);
+  const validity = () => {
+    input.setCustomValidity(input.required && !select.value ? 'Выберите запись из списка' : '');
+  };
+  const setValue = (next, { dispatch = false } = {}) => {
+    const previous = select.value;
+    current = next || '';
+    select.value = current;
+    input.value = labelFor(current);
+    validity();
+    if (dispatch && previous !== select.value) select.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const setOptions = (next, nextValue = select.value) => {
+    options = [...next];
+    select.replaceChildren(...optionNodes(options, nextValue));
+    setValue(nextValue);
+  };
+  const close = () => {
+    menu.hidden = true;
+    input.setAttribute('aria-expanded', 'false');
+  };
+  const choose = (id) => {
+    setValue(id, { dispatch: true });
+    close();
+    input.focus({ preventScroll: true });
+  };
+  const renderMenu = () => {
+    const query = input.value.trim().toLocaleLowerCase('ru');
+    matches = flat().filter((option) => !query || option.label.toLocaleLowerCase('ru').includes(query));
+    const visible = matches.slice(0, limit);
+    clear(menu);
+    if (visible.length) {
+      menu.append(...visible.map((option) => el('button.record-picker-option', {
+        type: 'button', role: 'option', 'aria-selected': option.value === select.value,
+        onmousedown: (event) => event.preventDefault(), onclick: () => choose(option.value),
+      }, option.label)));
+      if (matches.length > visible.length) {
+        menu.append(el('div.record-picker-hint', {}, `Показаны первые ${visible.length}. Уточните название.`));
+      }
+    } else {
+      menu.append(el('div.record-picker-empty', {}, query ? notFound : 'Записей пока нет в системе'));
+    }
+    if (onCreate && query && !matches.some((option) => option.label.toLocaleLowerCase('ru') === query)) {
+      menu.append(el('button.record-picker-create', {
+        type: 'button', onmousedown: (event) => event.preventDefault(),
+        onclick: () => { close(); onCreate(input.value.trim(), { setValue, setOptions }); },
+      }, createLabel(input.value.trim())));
+    }
+    menu.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+  };
+
+  input.addEventListener('focus', renderMenu);
+  input.addEventListener('input', () => {
+    const query = input.value.trim().toLocaleLowerCase('ru');
+    const exact = flat().find((option) => option.label.toLocaleLowerCase('ru') === query);
+    select.value = exact?.value || '';
+    validity();
+    renderMenu();
+  });
+  input.addEventListener('change', () => {
+    const query = input.value.trim().toLocaleLowerCase('ru');
+    const exact = flat().find((option) => option.label.toLocaleLowerCase('ru') === query);
+    if (exact) setValue(exact.value, { dispatch: true });
+    else if (!query) setValue('', { dispatch: true });
+    else setValue(select.value);
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { close(); setValue(select.value); return; }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault(); renderMenu(); menu.querySelector('button')?.focus();
+    }
+    if (event.key === 'Enter' && !menu.hidden && matches.length) {
+      event.preventDefault(); choose(matches[0].value);
+    }
+  });
+  menu.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { close(); input.focus(); }
+  });
+  wrap.addEventListener('focusout', () => {
+    setTimeout(() => {
+      if (wrap.contains(document.activeElement)) return;
+      close();
+      const query = input.value.trim().toLocaleLowerCase('ru');
+      const exact = flat().find((option) => option.label.toLocaleLowerCase('ru') === query);
+      if (exact) setValue(exact.value, { dispatch: true });
+      else if (!query) setValue('', { dispatch: true });
+      else setValue(select.value);
+    }, 0);
+  });
+  setOptions(options, value);
+  return { wrap, select, input, setValue, setOptions, open: renderMenu };
+}
+
 /** The <option>/<optgroup> nodes for a select, new or refilled in place. */
 function optionNodes(options, value) {
   const option = (o) => el('option', { value: o.value, selected: o.value === value }, o.label);

@@ -41,7 +41,7 @@ export function exportXlsx(kind, rows = null, filename = '') {
     sheetRows = data.map((d) => {
       const totals = dealTotals(d.id, store.payments);
       return {
-        'Название': d.name, 'Контрагент': nameOf(store.companies, d.companyId), 'ИНН': store.companies.find((c) => c.id === d.companyId)?.inn || '',
+        'Название': d.name, 'Тема': d.topic || '', 'Контрагент': nameOf(store.companies, d.companyId), 'ИНН': store.companies.find((c) => c.id === d.companyId)?.inn || '',
         'Продукт': d.product, 'Подпродукт': d.subproduct,
         'Стадия': DEAL_STAGES.find((s) => s.id === d.stage)?.label || d.stage,
         'Вероятность стадии, %': DEAL_STAGES.find((s) => s.id === d.stage)?.probability == null ? '' : Math.round(DEAL_STAGES.find((s) => s.id === d.stage).probability * 100),
@@ -50,7 +50,7 @@ export function exportXlsx(kind, rows = null, filename = '') {
         'Партнёр': nameOf(store.companies, d.partnerId), 'Контакт': nameOf(store.contacts, d.contactId),
         'Ответственный': nameOf(store.employees, store.salesTeam.find((r) => r.dealId === d.id && r.primary)?.employeeId),
         'Команда продаж': store.salesTeam.filter((r) => r.dealId === d.id)
-          .map((r) => `${nameOf(store.employees, r.employeeId)}${r.primary ? ' (основной)' : ''}${r.role ? ` — ${r.role}` : ''}`).join('; '),
+          .map((r) => `${r.employeeId ? nameOf(store.employees, r.employeeId) : `${nameOf(store.contacts, r.contactId)} (контакт / партнёр)`}${r.primary ? ' (основной)' : ''}${r.role ? ` — ${r.role}` : ''}`).join('; '),
         'Участники контрагента': (d.contacts || []).map((r) => `${nameOf(store.contacts, r.contactId)}${r.role ? ` — ${r.role}` : ''}${r.influence ? ` — ${r.influence}` : ''}`).join('; '),
         'Экономический покупатель': nameOf(store.contacts, d.economicBuyerContactId),
         'Кто продвигает': nameOf(store.contacts, d.championContactId),

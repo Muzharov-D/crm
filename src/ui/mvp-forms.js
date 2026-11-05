@@ -4,9 +4,10 @@ import { openModal } from './modal.js';
 import { toast } from './toast.js';
 import { store } from '../lib/store.js';
 import { dictionaryOptions, productForSubproduct, fiscalYearAt, fiscalQuarterAt } from '../lib/spec.js';
+import { composeDealName } from '../lib/mvp.js';
 import { todayISO } from '../lib/util.js';
 import {
-  ensureWritable, field, textInput, makeSelect, withCurrent, textArea, submitRow, wireForm,
+  ensureWritable, field, textInput, makeSelect, searchSelect, withCurrent, textArea, submitRow, wireForm,
 } from './forms.js';
 
 const byName = (rows) => [...rows].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
@@ -37,7 +38,7 @@ export function openCompanyForm(company = null, { onSaved = null } = {}) {
   const name = textInput({ value: company?.name || '', required: true, maxlength: 200 });
   const inn = textInput({ value: company?.inn || '', inputmode: 'numeric', maxlength: 12, pattern: '[0-9]{10}|[0-9]{12}', placeholder: '10 или 12 цифр' });
   const role = makeSelect(dictOptions('companyRoles', company?.role), company?.role || '');
-  const parent = makeSelect(recordOptions(store.companies.filter((c) => c.id !== company?.id), 'Нет головной структуры'), company?.parentCompanyId || '');
+  const parent = searchSelect(recordOptions(store.companies.filter((c) => c.id !== company?.id), 'Нет головной структуры'), company?.parentCompanyId || '');
   const industry = textInput({ value: company?.industry || '', maxlength: 120 });
   const website = textInput({ value: company?.website || '', maxlength: 200 });
   const notes = textArea({ value: company?.notes || '' });
@@ -57,18 +58,18 @@ export function openCompanyForm(company = null, { onSaved = null } = {}) {
   });
 }
 
-export function openContactForm(contact = null, { presets = {}, onSaved = null } = {}) {
+export function openContactForm(contact = null, { presets = {}, onSaved = null, compact = false } = {}) {
   if (!ensureWritable()) return;
   const data = { ...presets, ...contact };
   const name = textInput({ value: data.name || '', required: true, maxlength: 160 });
   const title = textInput({ value: data.title || '', maxlength: 160 });
   const phone = textInput({ value: data.phone || '', type: 'tel' });
   const email = textInput({ value: data.email || '', type: 'email' });
-  const company = makeSelect(recordOptions(store.companies, 'Без контрагента'), data.companyId || '');
+  const company = searchSelect(recordOptions(store.companies, 'Без контрагента'), data.companyId || '');
   const notes = textArea({ value: data.notes || '' });
-  const form = el('form.form', {}, field('ФИО', name), field('Должность', title),
+  const form = el('form.form', {}, field('ФИО', name), compact ? null : field('Должность', title),
     el('div.form-grid', {}, field('Телефон', phone), field('Email', email)),
-    field('Контрагент', company.wrap), field('Комментарий', notes), submitRow(contact ? 'Сохранить' : 'Добавить контакт'));
+    field('Контрагент', company.wrap), compact ? null : field('Комментарий', notes), submitRow(contact ? 'Сохранить' : 'Добавить контакт'));
   const modal = openEntityModal(contact ? 'Контакт' : 'Новый контакт', form, false);
   saveWithFeedback(form, async () => {
     const payload = { name: name.value.trim(), title: title.value.trim(), phone: phone.value.trim(),
@@ -78,18 +79,19 @@ export function openContactForm(contact = null, { presets = {}, onSaved = null }
   });
 }
 
-export function openEmployeeForm(employee = null, { onSaved = null } = {}) {
+export function openEmployeeForm(employee = null, { presets = {}, onSaved = null } = {}) {
   if (!ensureWritable()) return;
-  const name = textInput({ value: employee?.name || '', required: true, maxlength: 160 });
-  const role = makeSelect(dictOptions('employeeRoles', employee?.role), employee?.role || '');
-  const username = textInput({ value: employee?.username || '', placeholder: 'Логин в CRM (необязательно)' });
-  const notes = textArea({ value: employee?.notes || '' });
+  const data = { ...presets, ...employee };
+  const name = textInput({ value: data.name || '', required: true, maxlength: 160 });
+  const role = makeSelect(dictOptions('employeeRoles', data.role), data.role || '');
+  const username = textInput({ value: data.username || '', placeholder: 'Логин в CRM (необязательно)' });
+  const notes = textArea({ value: data.notes || '' });
   const form = el('form.form', {}, field('ФИО', name), field('Роль сотрудника', role.wrap),
     field('Системный пользователь', username, { hint: 'Связь нужна только для назначения задач текущему пользователю по умолчанию.' }),
     field('Комментарий', notes), submitRow(employee ? 'Сохранить' : 'Добавить сотрудника'));
   const modal = openEntityModal(employee ? 'Сотрудник' : 'Новый сотрудник', form, false);
   saveWithFeedback(form, async () => {
-    const payload = { name: name.value.trim(), role: role.select.value, username: username.value.trim(), notes: notes.value };
+    const payload = { name: name.value.trim(), role: role.select.value, username: username.value.trim(), notes: notes.value, active: data.active !== false };
     const saved = employee ? await store.updateEmployee(employee.id, payload) : await store.addEmployee(payload);
     modal.close(); onSaved?.(saved); return saved;
   });
@@ -120,9 +122,9 @@ export function openLeadForm(lead = null, { presets = {}, onSaved = null } = {})
     { value: 'l4', label: 'L4 — Глубоко проработанный лид' }, { value: 'l5', label: 'L5 — Лид-возможность' },
   ], data.stage || 'l0');
   const source = makeSelect(dictOptions('leadSources', data.source), data.source || '');
-  const contact = makeSelect(recordOptions(store.contacts, 'Без контакта'), data.contactId || '');
-  const company = makeSelect(recordOptions(store.companies, 'Без контрагента'), data.companyId || '');
-  const partner = makeSelect(recordOptions(companiesWithRole('Партнёр-интегратор', [data.partnerId]), 'Без партнёра'), data.partnerId || '');
+  const contact = searchSelect(recordOptions(store.contacts, 'Без контакта'), data.contactId || '');
+  const company = searchSelect(recordOptions(store.companies, 'Без контрагента'), data.companyId || '');
+  const partner = searchSelect(recordOptions(companiesWithRole('Партнёр-интегратор', [data.partnerId]), 'Без партнёра'), data.partnerId || '');
   const employee = makeSelect(recordOptions(store.activeEmployees([data.employeeId]), 'Не назначен'), data.employeeId || (store.currentEmployee()?.active !== false ? store.currentEmployee()?.id : '') || '');
   const { product, subproduct } = productFields(data);
   const budget = textInput({ value: data.preliminaryBudget || '', type: 'number', min: 0, step: '0.01', inputmode: 'decimal' });
@@ -151,11 +153,12 @@ export function openLeadForm(lead = null, { presets = {}, onSaved = null } = {})
 export function openDealForm(deal = null, { presets = {}, onSaved = null } = {}) {
   if (!ensureWritable()) return;
   const data = { ...presets, ...deal };
-  const name = textInput({ value: data.name || '', required: true, maxlength: 240 });
-  const company = makeSelect(recordOptions(store.companies, 'Выберите контрагента'), data.companyId || '');
-  company.select.required = true;
-  const contact = makeSelect(recordOptions(store.contacts, 'Без основного контакта'), data.contactId || '');
-  const partner = makeSelect(recordOptions(companiesWithRole('Партнёр-интегратор', [data.partnerId]), 'Без партнёра'), data.partnerId || '');
+  const topic = textInput({ value: data.topic || '', required: !deal, maxlength: 180, placeholder: 'Например, внедрение CRM для отдела продаж' });
+  const company = searchSelect(recordOptions(store.companies, 'Выберите контрагента'), data.companyId || '');
+  company.input.required = true;
+  const contactRows = () => store.contacts.filter((c) => !company.select.value || c.companyId === company.select.value || c.id === data.contactId);
+  const contact = searchSelect(recordOptions(contactRows(), 'Без основного контакта'), data.contactId || '');
+  const partner = searchSelect(recordOptions(companiesWithRole('Партнёр-интегратор', [data.partnerId]), 'Без партнёра'), data.partnerId || '');
   const { product, subproduct } = productFields(data);
   const stages = store.stages().map((s) => ({ value: s.id, label: s.label }));
   const stage = makeSelect(stages, data.stage || store.firstStage());
@@ -177,22 +180,45 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
   const closeReason = makeSelect(dictOptions('dealCloseReasons', data.closeReason), data.closeReason || '');
   const winner = textInput({ value: data.winner || '' });
   const notes = textArea({ value: data.notes || '', rows: 3 });
-  const outcomeFields = el('div.form-grid', {}, field('Исход', outcome.wrap), field('Причина закрытия', closeReason.wrap));
-  const form = el('form.form', {},
-    field('Название сделки', name),
+  const preview = el('p.deal-name-preview', { 'aria-live': 'polite' });
+  const automaticName = () => composeDealName({
+    topic: topic.value, companyName: store.companyById(company.select.value)?.name,
+    product: product.select.value, subproduct: subproduct.select.value,
+  }, data.name || '');
+  const syncName = () => {
+    preview.replaceChildren(el('span', {}, 'Название сделки'), el('strong', {}, automaticName() || 'Заполните тему и контрагента'));
+  };
+  company.select.addEventListener('change', () => {
+    const selected = store.contactById(contact.select.value);
+    if (selected && company.select.value && selected.companyId !== company.select.value) contact.setValue('');
+    contact.setOptions(recordOptions(contactRows(), 'Без основного контакта'), contact.select.value);
+    syncName();
+  });
+  topic.addEventListener('input', syncName);
+  product.select.addEventListener('change', () => setTimeout(syncName, 0));
+  subproduct.select.addEventListener('change', syncName);
+  syncName();
+
+  const baseFields = [
+    field('Тема', topic),
     el('div.form-grid', {}, field('Контрагент · один договор', company.wrap), field('Основной контакт', contact.wrap)),
     el('div.form-grid', {}, field('Продукт', product.wrap), field('Подпродукт', subproduct.wrap)),
     el('div.form-grid', {}, field('Стадия', stage.wrap), field('Независимый статус', status.wrap)),
     el('div.form-grid', {}, field('Категория вероятности', probability.wrap), field('Партнёр', partner.wrap)),
-    field('Конкуренты-контрагенты', competitors, { hint: 'Ctrl/Cmd — выбрать несколько.' }), field('Риски', risks),
-    el('div.form-grid', {}, field('Дата договора', contractDate), field('Дата старта работ', workStartDate)),
-    el('div.form-grid', {}, field('Событие заказчика', clientEvent), field('Дата события', clientEventDate)),
-    el('div.form-grid', {}, field('Что клиент вложил', investment.wrap), field('Бюджет', budget.wrap)),
-    field('Тип покупки', purchase.wrap),
-    el('div.form-grid', {}, field('Следующий шаг', nextText), field('Дата следующего шага', nextDate)),
+    preview,
+  ];
+  const outcomeFields = el('div.form-grid', {}, field('Исход', outcome.wrap), field('Причина закрытия', closeReason.wrap));
+  const form = el('form.form', {}, baseFields,
+    deal ? field('Конкуренты-контрагенты', competitors, { hint: 'Ctrl/Cmd — выбрать несколько.' }) : null,
+    deal ? field('Риски', risks) : null,
+    deal ? el('div.form-grid', {}, field('Дата договора', contractDate), field('Дата старта работ', workStartDate)) : null,
+    deal ? el('div.form-grid', {}, field('Событие заказчика', clientEvent), field('Дата события', clientEventDate)) : null,
+    deal ? el('div.form-grid', {}, field('Что клиент вложил', investment.wrap), field('Бюджет', budget.wrap)) : null,
+    deal ? field('Тип покупки', purchase.wrap) : null,
+    deal ? el('div.form-grid', {}, field('Следующий шаг', nextText), field('Дата следующего шага', nextDate)) : null,
     deal ? outcomeFields : null,
     deal ? field('Кто выиграл (при проигрыше)', winner) : null,
-    field('Комментарий', notes),
+    deal ? field('Комментарий', notes) : null,
     el('p.field-hint', {}, 'Общая сумма и суммы ФГ рассчитываются в реестре платежей карточки сделки.'),
     submitRow(deal ? 'Сохранить' : 'Добавить сделку'));
   const syncOutcome = () => {
@@ -200,10 +226,16 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
     winner.required = outcome.select.value === 'Проиграна';
   };
   outcome.select.addEventListener('change', syncOutcome); syncOutcome();
-  const modal = openEntityModal(deal ? 'Сделка' : 'Новая сделка', form);
+  const modal = openEntityModal(deal ? 'Сделка · дополнительные поля и закрытие' : 'Новая сделка', form, !!deal);
   saveWithFeedback(form, async () => {
-    const payload = { name: name.value.trim(), companyId: val(company.select), contactId: val(contact.select),
-      contacts: val(contact.select) ? [{ contactId: val(contact.select), role: deal?.contacts?.[0]?.role || '', influence: deal?.contacts?.[0]?.influence || '' }, ...(deal?.contacts || []).slice(1)] : [],
+    if (!company.select.value) {
+      company.input.setCustomValidity('Выберите контрагента из списка');
+      company.input.reportValidity();
+      throw new Error('Контрагент не выбран');
+    }
+    const contactId = val(contact.select);
+    const payload = { name: automaticName(), topic: topic.value.trim(), companyId: val(company.select), contactId,
+      contacts: contactId ? [{ contactId, role: deal?.contacts?.[0]?.role || '', influence: deal?.contacts?.[0]?.influence || '' }, ...(deal?.contacts || []).slice(1)] : [],
       partnerId: val(partner.select), product: product.select.value, subproduct: subproduct.select.value,
       stage: stage.select.value, status: status.select.value, probabilityCategory: probability.select.value,
       competitorIds: [...competitors.selectedOptions].map((o) => o.value), risks: risks.value,
@@ -221,8 +253,8 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
 export function openPaymentForm(payment = null, { presets = {}, onSaved = null } = {}) {
   if (!ensureWritable()) return;
   const data = { fiscalYear: fiscalYearAt(), quarter: fiscalQuarterAt(), ...presets, ...payment };
-  const deal = makeSelect(recordOptions(store.deals, 'Выберите сделку'), data.dealId || '');
-  deal.select.required = true;
+  const deal = searchSelect(recordOptions(store.deals, 'Выберите сделку'), data.dealId || '');
+  deal.input.required = true;
   const fiscalYear = textInput({ value: data.fiscalYear, type: 'number', min: 2000, max: 2200, required: true });
   const quarter = makeSelect(['Q1', 'Q2', 'Q3', 'Q4'].map((q) => ({ value: q, label: q })), data.quarter);
   const amount = textInput({ value: data.amount ?? '', type: 'number', min: 0, step: '0.01', required: true });
@@ -256,10 +288,10 @@ export function openActivityForm(activity = null, { presets = {}, onSaved = null
     { value: 'call', label: 'Звонок' }, { value: 'email', label: 'Письмо' },
   ], data.type || 'note');
   const summary = textInput({ value: data.summary || '', required: true, maxlength: 300 });
-  const deal = makeSelect(recordOptions(store.deals, 'Без сделки'), data.dealId || '');
-  const lead = makeSelect(recordOptions(store.leads, 'Без лида'), data.leadId || '');
-  const contact = makeSelect(recordOptions(store.contacts, 'Без контакта'), data.contactId || '');
-  const company = makeSelect(recordOptions(store.companies, 'Без контрагента'), data.companyId || '');
+  const deal = searchSelect(recordOptions(store.deals, 'Без сделки'), data.dealId || '');
+  const lead = searchSelect(recordOptions(store.leads, 'Без лида'), data.leadId || '');
+  const contact = searchSelect(recordOptions(store.contacts, 'Без контакта'), data.contactId || '');
+  const company = searchSelect(recordOptions(store.companies, 'Без контрагента'), data.companyId || '');
   const notes = textArea({ value: data.notes || '' });
   const form = el('form.form', {},
     el('p.field-hint', {}, 'Здесь фиксируются только свершившиеся события. Планы создаются задачами или следующим шагом сделки.'),
@@ -287,10 +319,10 @@ export function openTaskForm(task = null, { presets = {}, onSaved = null } = {})
   const startDate = textInput({ value: data.startDate || todayISO(), type: 'date', required: true });
   const due = textInput({ value: data.due || todayISO(), type: 'date', required: true });
   const status = makeSelect(dictOptions('taskStatuses', data.status || 'К выполнению', null, null), data.status || 'К выполнению');
-  const deal = makeSelect(recordOptions(store.deals, 'Без сделки'), data.dealId || '');
-  const lead = makeSelect(recordOptions(store.leads, 'Без лида'), data.leadId || '');
-  const contact = makeSelect(recordOptions(store.contacts, 'Без контакта'), data.contactId || '');
-  const company = makeSelect(recordOptions(store.companies, 'Без контрагента'), data.companyId || '');
+  const deal = searchSelect(recordOptions(store.deals, 'Без сделки'), data.dealId || '');
+  const lead = searchSelect(recordOptions(store.leads, 'Без лида'), data.leadId || '');
+  const contact = searchSelect(recordOptions(store.contacts, 'Без контакта'), data.contactId || '');
+  const company = searchSelect(recordOptions(store.companies, 'Без контрагента'), data.companyId || '');
   const form = el('form.form', {}, field('Описание задачи', title),
     field('Ответственный сотрудник', employee.wrap),
     el('div.form-grid', {}, field('Дата начала', startDate), field('Дата окончания', due)),

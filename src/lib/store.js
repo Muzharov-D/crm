@@ -269,7 +269,7 @@ function normalizeDeal(d, { stageIds, fallbackStage } = {}) {
     billing, term: normalizeTerm(d.term, billing),
     stage, status: str(d.status) || 'Новая', outcome,
     probabilityCategory: str(d.probabilityCategory),
-    product: str(d.product), subproduct: str(d.subproduct),
+    product: str(d.product), subproduct: str(d.subproduct), topic: str(d.topic),
     contacts, contactId: contacts[0]?.contactId ?? null,
     companyId: idOrNull(d.companyId), partnerId: idOrNull(d.partnerId),
     competitorIds: Array.isArray(d.competitorIds) ? d.competitorIds.map(str).filter(Boolean) : [],
@@ -540,6 +540,18 @@ class Store extends EventTarget {
     for (const deal of this.deals) {
       deal.value = dealTotals(deal.id, this.payments).total;
     }
+  }
+
+  /** A related-record mutation is also a visible update of its deal card. */
+  #touchDeals(ids, at = Date.now()) {
+    let touched = false;
+    for (const id of new Set((Array.isArray(ids) ? ids : [ids]).filter(Boolean))) {
+      const deal = this.dealById(id);
+      if (!deal) continue;
+      deal.updatedAt = at;
+      touched = true;
+    }
+    return touched;
   }
 
   /** Normalize old exports and persist the v2.1 migration once, without data loss. */
@@ -1242,6 +1254,7 @@ class Store extends EventTarget {
       activities: this.activities.filter((r) => r.contactId === id).map((r) => r.id),
       tasks: this.tasks.filter((r) => r.contactId === id).map((r) => r.id),
       companyTeam: this.companyTeam.filter((r) => r.contactId === id),
+      salesTeam: this.salesTeam.filter((r) => r.contactId === id),
     };
     this.contacts = this.contacts.filter((r) => r.id !== id);
     for (const row of this.deals) {
@@ -1253,11 +1266,14 @@ class Store extends EventTarget {
     for (const row of this.activities) if (row.contactId === id) row.contactId = null;
     for (const row of this.tasks) if (row.contactId === id) row.contactId = null;
     this.companyTeam = this.companyTeam.filter((r) => r.contactId !== id);
+    this.salesTeam = this.salesTeam.filter((r) => r.contactId !== id);
+    this.#touchDeals(refs.deals);
     const entry = this.#toTrash('contact', contact, refs);
     this.#emit();
     await Promise.all([
       this.#save(KV.contacts, this.contacts), this.#save(KV.deals, this.deals),
       this.#save(KV.leads, this.leads), this.#save(KV.companyTeam, this.companyTeam),
+      this.#save(KV.salesTeam, this.salesTeam),
       this.#save(KV.activities, this.activities), this.#save(KV.tasks, this.tasks),
       this.#save(KV.trash, this.trash),
     ]);
@@ -1427,6 +1443,14 @@ class Store extends EventTarget {
     deal = normalizeDeal(deal, this.#dealStageContext());
     this.deals.push(deal);
     this.dealStageHistory.push(newStageEntry('dealId', deal.id, '', deal.stage, deal.createdAt));
+    // A new deal starts with the signed-in employee as its single primary owner.
+    const owner = this.currentEmployee();
+    const hasOwner = owner && owner.active !== false;
+    if (hasOwner) {
+      this.salesTeam.push(...normalizeSalesTeam([{
+        dealId: deal.id, employeeId: owner.id, role: 'Ответственный', primary: true, createdAt: now,
+      }], deal.id));
+    }
     // Compatibility for old imports: a legacy amount is still a real payment.
     this.payments = migratePayments([deal], this.payments);
     this.#syncDealTotals();
@@ -1434,6 +1458,7 @@ class Store extends EventTarget {
     await Promise.all([
       this.#save(KV.deals, this.deals), this.#save(KV.payments, this.payments),
       this.#save(KV.dealStageHistory, this.dealStageHistory),
+      ...(hasOwner ? [this.#save(KV.salesTeam, this.salesTeam)] : []),
     ]);
     return deal;
   }
@@ -1545,6 +1570,7 @@ class Store extends EventTarget {
     const payment = { ...data, id: uid(), createdAt: Date.now() };
     const row = normalizePayment(payment);
     this.payments.push(row);
+    this.#touchDeals(row.dealId);
     this.#syncDealTotals();
     this.#emit();
     await Promise.all([this.#save(KV.payments, this.payments), this.#save(KV.deals, this.deals)]);
@@ -1556,8 +1582,10 @@ class Store extends EventTarget {
     const payment = this.payments.find((p) => p.id === id);
     if (!payment) return null;
     if (patch.dealId && !this.dealById(patch.dealId)) throw new Error('Сделка для платежа не найдена');
+    const previousDealId = payment.dealId;
     Object.assign(payment, patch);
     Object.assign(payment, normalizePayment(payment));
+    this.#touchDeals([previousDealId, payment.dealId]);
     this.#syncDealTotals();
     this.#emit();
     await Promise.all([this.#save(KV.payments, this.payments), this.#save(KV.deals, this.deals)]);
@@ -1569,6 +1597,7 @@ class Store extends EventTarget {
     const payment = this.payments.find((p) => p.id === id);
     if (!payment) return null;
     this.payments = this.payments.filter((p) => p.id !== id);
+    this.#touchDeals(payment.dealId);
     this.#syncDealTotals();
     this.#emit();
     await Promise.all([this.#save(KV.payments, this.payments), this.#save(KV.deals, this.deals)]);
@@ -1596,8 +1625,12 @@ class Store extends EventTarget {
     const next = normalizeSalesTeam(rows.filter((r) => !r.dealId || r.dealId === dealId)
       .map((r) => ({ ...r, id: r.id || uid(), dealId, createdAt: r.createdAt || Date.now() })), dealId);
     this.salesTeam = [...kept, ...next];
+    this.#touchDeals(dealId);
     this.#emit();
-    await this.#save(KV.salesTeam, this.salesTeam);
+    await Promise.all([
+      this.#save(KV.salesTeam, this.salesTeam),
+      this.#save(KV.deals, this.deals),
+    ]);
     return next;
   }
 
@@ -1627,8 +1660,12 @@ class Store extends EventTarget {
     };
     Object.assign(activity, normalizeActivity(activity));
     this.activities.push(activity);
+    this.#touchDeals(activity.dealId);
     this.#emit();
-    await this.#save(KV.activities, this.activities);
+    await Promise.all([
+      this.#save(KV.activities, this.activities),
+      this.#save(KV.deals, this.deals),
+    ]);
     return activity;
   }
 
@@ -1638,10 +1675,15 @@ class Store extends EventTarget {
     if (!activity) return null;
     const nextDate = patch.date || activity.date;
     if (nextDate > todayISO()) throw new Error('Событие не может быть датировано будущим');
+    const previousDealId = activity.dealId;
     Object.assign(activity, patch);
     Object.assign(activity, normalizeActivity(activity));
+    this.#touchDeals([previousDealId, activity.dealId]);
     this.#emit();
-    await this.#save(KV.activities, this.activities);
+    await Promise.all([
+      this.#save(KV.activities, this.activities),
+      this.#save(KV.deals, this.deals),
+    ]);
     return activity;
   }
 
@@ -1650,10 +1692,12 @@ class Store extends EventTarget {
     const activity = this.activities.find((a) => a.id === id);
     if (!activity) return null;
     this.activities = this.activities.filter((a) => a.id !== id);
+    this.#touchDeals(activity.dealId);
     const entry = this.#toTrash('activity', activity);
     this.#emit();
     await Promise.all([
       this.#save(KV.activities, this.activities),
+      this.#save(KV.deals, this.deals),
       this.#save(KV.trash, this.trash),
     ]);
     return entry;
@@ -1703,8 +1747,12 @@ class Store extends EventTarget {
     };
     Object.assign(task, normalizeTaskLinks(task));
     this.tasks.push(task);
+    this.#touchDeals(task.dealId);
     this.#emit();
-    await this.#save(KV.tasks, this.tasks);
+    await Promise.all([
+      this.#save(KV.tasks, this.tasks),
+      this.#save(KV.deals, this.deals),
+    ]);
     return task;
   }
 
@@ -1712,12 +1760,17 @@ class Store extends EventTarget {
     this.#assertWritable();
     const task = this.tasks.find((t) => t.id === id);
     if (!task) return null;
+    const previousDealId = task.dealId;
     Object.assign(task, patch);
     if ('status' in patch && !('done' in patch)) task.done = task.status === 'Выполнено';
     if ('done' in patch && !('status' in patch)) task.status = task.done ? 'Выполнено' : 'К выполнению';
     Object.assign(task, normalizeTaskLinks(task));
+    this.#touchDeals([previousDealId, task.dealId]);
     this.#emit();
-    await this.#save(KV.tasks, this.tasks);
+    await Promise.all([
+      this.#save(KV.tasks, this.tasks),
+      this.#save(KV.deals, this.deals),
+    ]);
     return task;
   }
 
@@ -1755,8 +1808,12 @@ class Store extends EventTarget {
     task.done = done;
     task.status = done ? 'Выполнено' : 'К выполнению';
     task.doneAt = done ? Date.now() : null;
+    this.#touchDeals(task.dealId);
     this.#emit();
-    await this.#save(KV.tasks, this.tasks);
+    await Promise.all([
+      this.#save(KV.tasks, this.tasks),
+      this.#save(KV.deals, this.deals),
+    ]);
     return task;
   }
 
@@ -1765,10 +1822,12 @@ class Store extends EventTarget {
     const task = this.tasks.find((t) => t.id === id);
     if (!task) return null;
     this.tasks = this.tasks.filter((t) => t.id !== id);
+    this.#touchDeals(task.dealId);
     const entry = this.#toTrash('task', task);
     this.#emit();
     await Promise.all([
       this.#save(KV.tasks, this.tasks),
+      this.#save(KV.deals, this.deals),
       this.#save(KV.trash, this.trash),
     ]);
     return entry;
@@ -2081,6 +2140,9 @@ class Store extends EventTarget {
     }
     for (const lead of this.leads) if (lead.contactId === mergedId) lead.contactId = survivorId;
     for (const row of this.companyTeam) if (row.contactId === mergedId) row.contactId = survivorId;
+    for (const row of this.salesTeam) if (row.contactId === mergedId) row.contactId = survivorId;
+    this.salesTeam = normalizeSalesTeam(this.salesTeam);
+    this.#touchDeals(refs.deals);
     for (const a of this.activities) if (a.contactId === mergedId) a.contactId = survivorId;
     for (const t of this.tasks) if (t.contactId === mergedId) t.contactId = survivorId;
     for (const a of this.attachments) if (a.contactId === mergedId) a.contactId = survivorId;
@@ -2367,6 +2429,8 @@ class Store extends EventTarget {
       if (this.#reattach(this.tasks, refs.tasks, 'contactId', record.id)) writes.add(KV.tasks);
       restoreRows(refs.companyTeam, this.companyTeam, KV.companyTeam,
         (row) => !!this.companyById(row.companyId));
+      restoreRows(refs.salesTeam, this.salesTeam, KV.salesTeam,
+        (row) => !!this.dealById(row.dealId));
     } else if (entry.kind === 'deal') {
       // A stage removed while the deal sat in the trash must not leave it
       // stranded off the board - the rule setStages applies to live deals.

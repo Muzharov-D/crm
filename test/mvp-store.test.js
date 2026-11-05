@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Store } from '../src/lib/store.js';
+import { composeDealName } from '../src/lib/mvp.js';
 
 let kvData;
 
@@ -239,5 +240,74 @@ describe('MVP v2.1 delete, merge and restore links', () => {
     expect(store.leadById(lead.id)).toMatchObject({ companyId: keep.id, contactId: contactKeep.id });
     expect(store.companyTeamFor(keep.id)).toHaveLength(1);
     expect(store.companyTeamFor(keep.id)[0].contactId).toBe(contactKeep.id);
+  });
+});
+
+
+describe('deal card editing and mixed sales teams', () => {
+  it('builds a deal name from company, product, subproduct and topic', () => {
+    expect(composeDealName({ companyName: 'Авандок', product: 'Платформа', subproduct: 'CRM', topic: 'Внедрение продаж' }))
+      .toBe('Авандок · Платформа · CRM · Внедрение продаж');
+    expect(composeDealName({ companyName: 'Авандок', topic: 'CRM' })).toBe('Авандок · CRM');
+    expect(composeDealName({ companyName: 'Авандок' }, 'Прежнее название')).toBe('Прежнее название');
+  });
+
+  it('allows partner contacts while only an employee can be primary', async () => {
+    const store = await freshStore();
+    const employee = await store.addEmployee({ name: 'Продавец' });
+    const contact = await store.addContact({ name: 'Внешний партнёр' });
+    const deal = await store.addDeal({ name: 'Сделка' });
+    await store.setSalesTeam(deal.id, [{ contactId: contact.id, role: 'Партнёр' }]);
+    expect(store.salesTeamFor(deal.id)).toHaveLength(1);
+    expect(store.salesTeamFor(deal.id)[0]).toMatchObject({ contactId: contact.id, employeeId: null, primary: false });
+    await store.setSalesTeam(deal.id, [...store.salesTeam, { dealId: deal.id, employeeId: employee.id }]);
+    expect(store.salesTeamFor(deal.id)).toHaveLength(2);
+    expect(store.salesTeamFor(deal.id).filter((row) => row.primary)).toHaveLength(1);
+    expect(store.salesTeamFor(deal.id).find((row) => row.primary).employeeId).toBe(employee.id);
+  });
+
+  it('assigns the signed-in employee as the primary owner of a new deal', async () => {
+    const store = await freshStore();
+    const employee = await store.addEmployee({ name: 'Текущий пользователь', username: 'tester' });
+    const deal = await store.addDeal({ name: 'Новая сделка' });
+    expect(store.salesTeamFor(deal.id)).toHaveLength(1);
+    expect(store.salesTeamFor(deal.id)[0]).toMatchObject({ employeeId: employee.id, primary: true });
+  });
+
+  it('touches the deal update stamp for payments, team, tasks and events', async () => {
+    const store = await freshStore();
+    const employee = await store.addEmployee({ name: 'Продавец' });
+    const deal = await store.addDeal({ name: 'Сделка' });
+    const expectTouch = async (run) => {
+      store.dealById(deal.id).updatedAt = 1;
+      await run();
+      expect(store.dealById(deal.id).updatedAt).toBeGreaterThan(1);
+    };
+    let payment;
+    await expectTouch(async () => { payment = await store.addPayment({ dealId: deal.id, amount: 100 }); });
+    await expectTouch(() => store.updatePayment(payment.id, { amount: 200 }));
+    await expectTouch(() => store.deletePayment(payment.id));
+    await expectTouch(() => store.setSalesTeam(deal.id, [{ employeeId: employee.id }]));
+    let task;
+    await expectTouch(async () => { task = await store.addTask({ title: 'Следующий шаг', dealId: deal.id }); });
+    await expectTouch(() => store.updateTask(task.id, { title: 'Уточнённый шаг' }));
+    await expectTouch(() => store.toggleTask(task.id, true));
+    await expectTouch(() => store.deleteTask(task.id));
+    let activity;
+    await expectTouch(async () => { activity = await store.addActivity({ summary: 'Звонок', date: '2026-01-10', dealId: deal.id }); });
+    await expectTouch(() => store.updateActivity(activity.id, { summary: 'Состоявшийся звонок' }));
+    await expectTouch(() => store.deleteActivity(activity.id));
+  });
+
+  it('removes and restores contact membership in a sales team with the contact', async () => {
+    const store = await freshStore();
+    const contact = await store.addContact({ name: 'Партнёр' });
+    const deal = await store.addDeal({ name: 'Сделка', contactId: contact.id });
+    await store.setSalesTeam(deal.id, [{ contactId: contact.id, role: 'Партнёр' }]);
+    const entry = await store.deleteContact(contact.id);
+    expect(store.salesTeamFor(deal.id)).toEqual([]);
+    await store.restoreTrash(entry.id);
+    expect(store.salesTeamFor(deal.id)).toHaveLength(1);
+    expect(store.salesTeamFor(deal.id)[0].contactId).toBe(contact.id);
   });
 });
