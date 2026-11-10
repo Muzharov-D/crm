@@ -8,52 +8,67 @@ import { exportXlsx } from '../lib/xlsx.js';
 import { formatDate, fuzzyIncludes } from '../lib/util.js';
 import { confirmDialog } from '../ui/modal.js';
 import { toast } from '../ui/toast.js';
+import { registryHead, sortRecords, toggleSort, advancedFilters, filterRecords } from '../ui/registry.js';
 
 const stageLabel = (id) => LEAD_STAGES.find((s) => s.id === id)?.label || id;
 
 export function leadsMvpView({ params, navigate }) {
   const root = el('div.view');
   const id = params.get('id');
-  const state = { search: '', status: '', stage: '', employeeId: '' };
+  const state = { search: '', status: '', stage: '', employeeId: '', sortKey: 'createdAt', sortDirection: 'desc', filters: [] };
   const render = keepingFocus(() => {
     clear(root);
     if (id) renderDetail(); else renderList();
   });
 
   function renderList() {
-    const search = el('input.input', { type: 'search', value: state.search, placeholder: 'Название, контрагент или контакт', oninput: (e) => { state.search = e.target.value; renderRows(); } });
-    const status = el('select.select', { onchange: (e) => { state.status = e.target.value; renderRows(); } },
-      el('option', { value: '' }, 'Все статусы'), ['Новый', 'В работе', 'Квалифицирован', 'Дисквалифицирован', 'Закрыт'].map((v) => el('option', { value: v, selected: state.status === v }, v)));
-    const stage = el('select.select', { onchange: (e) => { state.stage = e.target.value; renderRows(); } },
-      el('option', { value: '' }, 'Все стадии L0–L5'), LEAD_STAGES.map((s) => el('option', { value: s.id, selected: state.stage === s.id }, s.label)));
-    const employee = el('select.select', { onchange: (e) => { state.employeeId = e.target.value; renderRows(); } },
-      el('option', { value: '' }, 'Все сотрудники'), store.employees.map((e) => el('option', { value: e.id, selected: state.employeeId === e.id }, e.name)));
-    const body = el('tbody');
-    const count = el('span.filter-count');
-    const filtered = () => store.leads.filter((l) => (!state.status || l.status === state.status) && (!state.stage || l.stage === state.stage)
-      && (!state.employeeId || l.employeeId === state.employeeId)
-      && (!state.search || fuzzyIncludes(`${l.name} ${store.companyById(l.companyId)?.name || ''} ${store.contactById(l.contactId)?.name || ''}`, state.search)));
+    const columns = [
+      { key: 'name', label: 'Название', get: (lead) => lead.name || '' },
+      { key: 'status', label: 'Статус', get: (lead) => lead.status || '' },
+      { key: 'stage', label: 'Стадия', get: (lead) => stageLabel(lead.stage) },
+      { key: 'company', label: 'Контрагент', get: (lead) => store.companyById(lead.companyId)?.name || '' },
+      { key: 'contact', label: 'Контакт', get: (lead) => store.contactById(lead.contactId)?.name || '' },
+      { key: 'product', label: 'Продукт', get: (lead) => `${lead.product || ''}${lead.subproduct ? ` / ${lead.subproduct}` : ''}` },
+      { key: 'employee', label: 'Ответственный', get: (lead) => store.employeeById(lead.employeeId)?.name || '' },
+      { key: 'budget', label: 'Бюджет', type: 'number', numeric: true, get: (lead) => lead.preliminaryBudget ?? null },
+      { key: 'createdAt', label: 'Создан', type: 'date', get: (lead) => lead.createdAt ? new Date(lead.createdAt).toISOString().slice(0, 10) : '' },
+      { key: 'deal', label: 'Сделка', get: (lead) => lead.convertedDealId ? store.dealById(lead.convertedDealId)?.name || 'Сделка создана' : '' },
+    ];
+    const results = el('div');
+    const filtered = () => filterRecords(store.leads.filter((lead) => (!state.status || lead.status === state.status)
+      && (!state.stage || lead.stage === state.stage) && (!state.employeeId || lead.employeeId === state.employeeId)
+      && (!state.search || fuzzyIncludes(`${lead.name} ${store.companyById(lead.companyId)?.name || ''} ${store.contactById(lead.contactId)?.name || ''} ${store.employeeById(lead.employeeId)?.name || ''} ${lead.product || ''}`, state.search))), columns, state.filters);
+    const table = (rows) => el('div.table-wrap.registry-table-wrap', {}, el('table.data-table', {},
+      registryHead(columns, state, (key) => { toggleSort(state, key); renderRows(); }),
+      el('tbody', {}, rows.length ? sortRecords(rows, columns, state).map((lead) => el('tr', {},
+        el('td', {}, el('a.record-link', { href: `#/leads?id=${lead.id}` }, lead.name || 'Без названия')),
+        el('td', {}, el('span.status-pill', {}, lead.status || '—')), el('td', {}, stageLabel(lead.stage)),
+        el('td', {}, store.companyById(lead.companyId)?.name || '—'), el('td', {}, store.contactById(lead.contactId)?.name || '—'),
+        el('td', {}, `${lead.product || '—'}${lead.subproduct ? ` / ${lead.subproduct}` : ''}`),
+        el('td', {}, store.employeeById(lead.employeeId)?.name || '—'),
+        el('td.num', {}, lead.preliminaryBudget || lead.preliminaryBudget === 0 ? money(lead.preliminaryBudget) : '—'),
+        el('td', {}, lead.createdAt ? formatDate(new Date(lead.createdAt).toISOString().slice(0, 10)) : '—'),
+        el('td', {}, lead.convertedDealId ? el('a.record-link', { href: `#/pipeline?id=${lead.convertedDealId}` }, 'Сделка создана') : '—')))
+        : el('tr', {}, el('td', { colspan: columns.length }, 'По фильтрам ничего не найдено')))));
     function renderRows() {
-      const rows = filtered().sort((a, b) => b.createdAt - a.createdAt);
-      count.textContent = `${rows.length} из ${store.leads.length}`;
-      clear(body).append(...(rows.length ? rows.map((l) => el('tr', {},
-        el('td', {}, el('a.record-link', { href: `#/leads?id=${l.id}` }, l.name || 'Без названия')),
-        el('td', {}, el('span.status-pill', {}, l.status)), el('td', {}, stageLabel(l.stage)),
-        el('td', {}, store.companyById(l.companyId)?.name || '—'), el('td', {}, store.contactById(l.contactId)?.name || '—'),
-        el('td', {}, `${l.product || '—'}${l.subproduct ? ` / ${l.subproduct}` : ''}`),
-        el('td', {}, store.employeeById(l.employeeId)?.name || '—'), el('td.num', {}, l.preliminaryBudget ? money(l.preliminaryBudget) : '—'),
-        el('td', {}, formatDate(new Date(l.createdAt).toISOString().slice(0, 10))),
-        el('td', {}, l.convertedDealId ? el('a.record-link', { href: `#/pipeline?id=${l.convertedDealId}` }, 'Сделка создана') : '—')))
-        : [el('tr', {}, el('td', { colspan: 10 }, 'По фильтрам ничего не найдено'))]));
+      const rows = filtered();
+      clear(results).append(el('div.registry-summary', {}, el('span.filter-count', {}, `${rows.length} из ${store.leads.length}`),
+        el('span', {}, 'Нажмите на заголовок для сортировки')),
+        store.leads.length ? table(rows) : emptyState('Лидов пока нет', 'Создайте первое обращение или импортируйте данные.', canWrite(store.user) && actionButton('Создать лид', () => openLeadForm(), { primary: true })));
     }
-    renderRows();
+    const search = el('input.input', { type: 'search', value: state.search, placeholder: 'Название, контрагент, контакт или ответственный',
+      dataset: { focusKey: 'lead-search' }, oninput: (event) => { state.search = event.target.value; renderRows(); } });
+    const status = el('select.select', { onchange: (event) => { state.status = event.target.value; renderRows(); } },
+      el('option', { value: '' }, 'Все статусы'), ['Новый', 'В работе', 'Квалифицирован', 'Дисквалифицирован', 'Закрыт'].map((value) => el('option', { value, selected: state.status === value }, value)));
+    const stage = el('select.select', { onchange: (event) => { state.stage = event.target.value; renderRows(); } },
+      el('option', { value: '' }, 'Все стадии L0–L5'), LEAD_STAGES.map((item) => el('option', { value: item.id, selected: state.stage === item.id }, item.label)));
+    const employee = el('select.select', { onchange: (event) => { state.employeeId = event.target.value; renderRows(); } },
+      el('option', { value: '' }, 'Все сотрудники'), store.employees.map((item) => el('option', { value: item.id, selected: state.employeeId === item.id }, item.name)));
     root.append(pageHead('Лиды', 'Отдельный реестр обращений и квалификации L0–L5',
-      actionButton('Экспорт XLSX', () => exportXlsx('leads', filtered()), { iconName: 'download' }),
+      actionButton('Экспорт XLSX', () => exportXlsx('leads', sortRecords(filtered(), columns, state)), { iconName: 'download' }),
       canWrite(store.user) && actionButton('Новый лид', () => openLeadForm(), { primary: true, iconName: 'plus' })),
-      el('div.filter-bar', {}, search, status, stage, employee, count),
-      store.leads.length ? el('div.table-wrap', {}, el('table.data-table', {},
-        el('thead', {}, el('tr', {}, ['Название', 'Статус', 'Стадия', 'Контрагент', 'Контакт', 'Продукт', 'Ответственный', 'Бюджет', 'Создан', 'Сделка'].map((h) => el('th', {}, h)))), body))
-        : emptyState('Лидов пока нет', 'Создайте первое обращение или импортируйте данные.', canWrite(store.user) && actionButton('Создать лид', () => openLeadForm(), { primary: true })));
+      el('div.filter-bar', {}, search, status, stage, employee), advancedFilters(columns, state.filters, renderRows), results);
+    renderRows();
   }
 
   function renderDetail() {

@@ -9,7 +9,7 @@ export function openNotifications() {
   const modal = openModal({
     title: 'Центр уведомлений',
     content: list,
-    footer: el('p.field-hint', {}, 'Сигналы формируются из текущих сроков и данных CRM. Пуш-уведомления в демо не используются.'),
+    footer: el('p.field-hint', {}, 'Сигналы формируются из текущих сроков и данных CRM. Прочтение не снимает просрочку: уведомление остаётся актуальным до закрытия или переноса шага.'),
   });
   const render = () => {
     clear(list);
@@ -23,7 +23,10 @@ export function openNotifications() {
     }
     list.append(...alerts.map((alert) => el('a.notification-item', {
       href: alert.hash,
-      onclick: () => modal.close(),
+      onclick: () => {
+        if (alert.notificationId) store.markDealNotificationRead(alert.notificationId).catch(() => {});
+        modal.close();
+      },
     },
       el('span.notification-severity', { dataset: { tone: alert.tone }, 'aria-hidden': 'true' }),
       el('span.grow.min0', {}, el('strong', {}, alert.title), el('small', {}, alert.detail)),

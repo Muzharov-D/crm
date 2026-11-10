@@ -28,6 +28,12 @@
       "includeFiles": "server/**"
     }
   },
+  "crons": [
+    {
+      "path": "/api/jobs/overdue",
+      "schedule": "0 * * * *"
+    }
+  ],
   "regions": [
     "fra1"
   ]

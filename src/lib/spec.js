@@ -8,9 +8,8 @@ export const DEAL_STAGES = [
   { id: 's5', label: 'S5 Решение и КП', probability: 0.35 },
   { id: 's6', label: 'S6 Закупка', probability: 0.45 },
   { id: 's7', label: 'S7 Договор', probability: 0.85 },
-  { id: 's8', label: 'S8 Выиграно', probability: 1 },
-  { id: 's9', label: 'S9 Реализация', probability: 1 },
-  { id: 's10', label: 'S10 Завершён', probability: 1 },
+  { id: 'won', label: 'Выиграна', probability: 1 },
+  { id: 'lost', label: 'Проиграна', probability: 0 },
 ];
 
 export const LEAD_STAGES = [
@@ -30,6 +29,8 @@ export const DICTIONARY_DEFINITIONS = [
   { key: 'salesRoles', label: 'Роль в сделке (продажи)', values: ['Ответственный', 'Пресейл', 'Архитектор решения', 'Коммерческий директор'] },
   { key: 'leadStatuses', label: 'Статус лида', values: ['Новый', 'В работе', 'Квалифицирован', 'Дисквалифицирован', 'Закрыт'] },
   { key: 'leadSources', label: 'Источник лида', values: ['Сайт', 'Email', 'Вебинар', 'Соцмедиа', 'Специализированный СМИ', 'ИТ-СМИ', 'Конференция/форумы', 'Партнёрская рекомендация', 'Тендерная площадка', 'Холодный охват'] },
+  { key: 'dealSources', label: 'Источник сделки', values: ['Сайт', 'Email', 'Вебинар', 'Соцмедиа', 'Конференция/форумы', 'Партнёрская рекомендация', 'Тендерная площадка', 'Холодный охват', 'Повторная продажа', 'Другое'] },
+  { key: 'dealChannels', label: 'Канал сделки', values: ['Входящий', 'Исходящий', 'Партнёрский', 'Тендер', 'Повторный', 'Другое'] },
   { key: 'leadReasons', label: 'Причина (лид)', values: ['Нет бюджета', 'Не наш профиль', 'Взяли конкурента', 'Перенесли на будущее', 'Дубль обращения'] },
   { key: 'products', label: 'Продукт', values: ['Платформа', 'ИИ', 'Профиль'] },
   { key: 'subproducts', label: 'Подпродукт', values: [
@@ -49,7 +50,7 @@ export const DICTIONARY_DEFINITIONS = [
   { key: 'budgets', label: 'Бюджет', values: ['Утверждён', 'Заявлен', 'Нет'] },
   { key: 'purchaseTypes', label: 'Тип покупки', values: ['Ещё не знают', 'Прямая', 'Тендер', 'Через партнёра', 'Рамочный'] },
   { key: 'dealOutcomes', label: 'Исход сделки', values: ['Выиграна', 'Проиграна', 'Нет решения', 'Дисквалифицирована'] },
-  { key: 'dealCloseReasons', label: 'Причина закрытия сделки', values: ['Проиграли конкуренту — функциональность', 'Проиграли конкуренту — цена', 'Отрицательное заключение ИБ', 'Формальные требования процедуры', 'ТЗ под конкурента', 'Сроки внедрения не устроили', 'Бюджет не выделен', 'Отложено на следующий цикл', 'Реорганизация/смена руководства', 'Нет владельца задачи', 'Выбрали собственную разработку', 'Отказались сами — условия неприемлемы'] },
+  { key: 'dealCloseReasons', label: 'Причина закрытия сделки', values: ['Цена или коммерческие условия', 'Функциональность или состав решения', 'Сроки', 'Выбран другой поставщик', 'Нет бюджета', 'Проект или закупка отменены', 'Другое'] },
   { key: 'taskStatuses', label: 'Статус задачи', values: ['К выполнению', 'В работе', 'Выполнено'] },
 ];
 
@@ -176,7 +177,7 @@ export function cohortConversion(records, history, {
     const iso = new Date(at).toISOString().slice(0, 10);
     if ((from && iso < from) || (to && iso > to)) continue;
     const target = stageIndex(toStage, stages);
-    const won = record.outcome === 'Выиграна' && target >= stageIndex('s8', stages);
+    const won = record.outcome === 'Выиграна' && target >= stageIndex('won', stages);
     cohort.push({ record, at, reached: (furthest.get(record.id) ?? -1) >= target || won });
   }
   const reached = cohort.filter((r) => r.reached).length;

@@ -22,8 +22,8 @@ export const TERMINAL_STAGES = [
   { id: 'lost', label: 'Проиграна', probability: 0 },
 ];
 
-/** Canonical MVP v2.1 funnel. S1 deliberately has no assigned probability. */
-export const DEFAULT_OPEN_STAGES = DEAL_STAGES.map((s) => ({ ...s }));
+/** Canonical funnel: S1–S7 in work, with separate terminal outcomes. */
+export const DEFAULT_OPEN_STAGES = DEAL_STAGES.filter((s) => !['won', 'lost'].includes(s.id)).map((s) => ({ ...s }));
 
 /** Backward-compatible export name used by the settings screen. */
 export const ABR_OPEN_STAGES = DEFAULT_OPEN_STAGES;
@@ -82,9 +82,8 @@ function sanitizeOpenStages(list) {
  * pinned on the end either way.
  */
 export function resolveStages() {
-  // MVP v2.1 fixes the canonical S1–S10 funnel. Legacy custom funnels are
-  // migrated to these ids instead of leaking extra columns into the board.
-  return DEFAULT_OPEN_STAGES.map((s) => ({ ...s }));
+  // Custom legacy funnels are migrated to the canonical S1–S7 model.
+  return [...DEFAULT_OPEN_STAGES.map((s) => ({ ...s })), ...TERMINAL_STAGES.map((s) => ({ ...s }))];
 }
 
 export function stageInfo(stageId, stages = STAGES) {

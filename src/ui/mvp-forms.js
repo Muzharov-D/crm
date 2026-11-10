@@ -6,6 +6,8 @@ import { store } from '../lib/store.js';
 import { dictionaryOptions, productForSubproduct, fiscalYearAt, fiscalQuarterAt } from '../lib/spec.js';
 import { composeDealName } from '../lib/mvp.js';
 import { todayISO } from '../lib/util.js';
+import { isFinalStage } from '../lib/deal-workflow.js';
+import { openDealEventForm } from './deal-forms.js';
 import {
   ensureWritable, field, textInput, makeSelect, searchSelect, withCurrent, textArea, submitRow, wireForm,
 } from './forms.js';
@@ -156,38 +158,29 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
   const topic = textInput({ value: data.topic || '', required: !deal, maxlength: 180, placeholder: 'Например, внедрение CRM для отдела продаж' });
   const company = searchSelect(recordOptions(store.companies, 'Выберите контрагента'), data.companyId || '');
   company.input.required = true;
-  const contactRows = () => store.contacts.filter((c) => !company.select.value || c.companyId === company.select.value || c.id === data.contactId);
+  const contactRows = () => store.contacts.filter((contact) => !company.select.value || contact.companyId === company.select.value || contact.id === data.contactId);
   const contact = searchSelect(recordOptions(contactRows(), 'Без основного контакта'), data.contactId || '');
   const partner = searchSelect(recordOptions(companiesWithRole('Партнёр-интегратор', [data.partnerId]), 'Без партнёра'), data.partnerId || '');
   const { product, subproduct } = productFields(data);
-  const stages = store.stages().map((s) => ({ value: s.id, label: s.label }));
-  const stage = makeSelect(stages, data.stage || store.firstStage());
-  const status = makeSelect(dictOptions('dealStatuses', data.status || 'Новая'), data.status || 'Новая');
+  const terminal = isFinalStage(data.stage);
+  const stages = store.stages().filter((stage) => !isFinalStage(stage.id) || stage.id === data.stage)
+    .map((stage) => ({ value: stage.id, label: stage.label }));
+  const stage = makeSelect(stages, data.stage || store.firstStage(), { disabled: terminal });
+  const status = makeSelect(dictOptions('dealStatuses', data.status || 'Новая'), data.status || 'Новая', { disabled: terminal });
+  const owner = makeSelect(recordOptions(store.activeEmployees([data.employeeId]), 'Не назначен'), data.employeeId || (store.currentEmployee()?.active !== false ? store.currentEmployee()?.id : '') || '');
+  const users = textInput({ value: data.userCount ?? '', type: 'number', min: 0, step: 1 });
+  const source = makeSelect(dictOptions('dealSources', data.source), data.source || '');
+  const channel = makeSelect(dictOptions('dealChannels', data.channel), data.channel || '');
   const probability = makeSelect(dictOptions('probabilityCategories', data.probabilityCategory), data.probabilityCategory || '');
-  const competitors = el('select.select', { multiple: true, size: 3, 'aria-label': 'Конкуренты' },
-    byName(companiesWithRole('Конкурент', data.competitorIds || [])).map((c) => el('option', { value: c.id, selected: data.competitorIds?.includes(c.id) }, c.name)));
-  const risks = textArea({ value: data.risks || '', rows: 2 });
-  const contractDate = textInput({ value: data.contractDate || '', type: 'date' });
-  const workStartDate = textInput({ value: data.workStartDate || '', type: 'date' });
-  const clientEvent = textInput({ value: data.clientEvent || '' });
-  const clientEventDate = textInput({ value: data.clientEventDate || '', type: 'date' });
-  const investment = makeSelect(dictOptions('clientInvestments', data.clientInvestment), data.clientInvestment || '');
-  const budget = makeSelect(dictOptions('budgets', data.budget), data.budget || '');
-  const purchase = makeSelect(dictOptions('purchaseTypes', data.purchaseType), data.purchaseType || '');
-  const nextText = textInput({ value: data.nextStepText || '' });
-  const nextDate = textInput({ value: data.nextStepDate || '', type: 'date' });
-  const outcome = makeSelect(dictOptions('dealOutcomes', data.outcome, null, 'Открыта'), data.outcome || '');
-  const closeReason = makeSelect(dictOptions('dealCloseReasons', data.closeReason), data.closeReason || '');
-  const winner = textInput({ value: data.winner || '' });
+  const amountMode = makeSelect([{ value: 'manual', label: 'Ручная оценка' }, { value: 'payments', label: 'Сумма платежей' }], data.amountMode || 'manual');
+  const manualValue = textInput({ value: data.manualValue ?? '', type: 'number', min: 0, step: '0.01', inputmode: 'decimal' });
   const notes = textArea({ value: data.notes || '', rows: 3 });
   const preview = el('p.deal-name-preview', { 'aria-live': 'polite' });
   const automaticName = () => composeDealName({
     topic: topic.value, companyName: store.companyById(company.select.value)?.name,
     product: product.select.value, subproduct: subproduct.select.value,
   }, data.name || '');
-  const syncName = () => {
-    preview.replaceChildren(el('span', {}, 'Название сделки'), el('strong', {}, automaticName() || 'Заполните тему и контрагента'));
-  };
+  const syncName = () => preview.replaceChildren(el('span', {}, 'Название сделки'), el('strong', {}, automaticName() || 'Заполните тему и контрагента'));
   company.select.addEventListener('change', () => {
     const selected = store.contactById(contact.select.value);
     if (selected && company.select.value && selected.companyId !== company.select.value) contact.setValue('');
@@ -197,53 +190,39 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
   topic.addEventListener('input', syncName);
   product.select.addEventListener('change', () => setTimeout(syncName, 0));
   subproduct.select.addEventListener('change', syncName);
-  syncName();
-
-  const baseFields = [
+  const syncAmount = () => { manualValue.disabled = amountMode.select.value === 'payments'; };
+  amountMode.select.addEventListener('change', syncAmount); syncAmount(); syncName();
+  const form = el('form.form', {},
     field('Тема', topic),
     el('div.form-grid', {}, field('Контрагент · один договор', company.wrap), field('Основной контакт', contact.wrap)),
     el('div.form-grid', {}, field('Продукт', product.wrap), field('Подпродукт', subproduct.wrap)),
-    el('div.form-grid', {}, field('Стадия', stage.wrap), field('Независимый статус', status.wrap)),
+    el('div.form-grid', {}, field('Статус', status.wrap), field('Стадия', stage.wrap)),
+    el('div.form-grid', {}, field('Количество пользователей', users), field('Ответственный', owner.wrap)),
+    el('div.form-grid', {}, field('Источник', source.wrap), field('Канал', channel.wrap)),
     el('div.form-grid', {}, field('Категория вероятности', probability.wrap), field('Партнёр', partner.wrap)),
-    preview,
-  ];
-  const outcomeFields = el('div.form-grid', {}, field('Исход', outcome.wrap), field('Причина закрытия', closeReason.wrap));
-  const form = el('form.form', {}, baseFields,
-    deal ? field('Конкуренты-контрагенты', competitors, { hint: 'Ctrl/Cmd — выбрать несколько.' }) : null,
-    deal ? field('Риски', risks) : null,
-    deal ? el('div.form-grid', {}, field('Дата договора', contractDate), field('Дата старта работ', workStartDate)) : null,
-    deal ? el('div.form-grid', {}, field('Событие заказчика', clientEvent), field('Дата события', clientEventDate)) : null,
-    deal ? el('div.form-grid', {}, field('Что клиент вложил', investment.wrap), field('Бюджет', budget.wrap)) : null,
-    deal ? field('Тип покупки', purchase.wrap) : null,
-    deal ? el('div.form-grid', {}, field('Следующий шаг', nextText), field('Дата следующего шага', nextDate)) : null,
-    deal ? outcomeFields : null,
-    deal ? field('Кто выиграл (при проигрыше)', winner) : null,
-    deal ? field('Комментарий', notes) : null,
-    el('p.field-hint', {}, 'Общая сумма и суммы ФГ рассчитываются в реестре платежей карточки сделки.'),
+    el('div.form-grid', {}, field('Способ оценки', amountMode.wrap), field('Ручная оценка, без НДС', manualValue, { hint: 'Пусто и явный ноль — разные значения.' })),
+    preview, field('Комментарий', notes),
+    el('p.field-hint', {}, terminal
+      ? 'Изменение результата закрытой сделки выполняется в отдельном блоке «Исправить закрытие».'
+      : 'Закрытие, конкуренты, следующий шаг, участники и платежи редактируются в карточке сделки.'),
     submitRow(deal ? 'Сохранить' : 'Добавить сделку'));
-  const syncOutcome = () => {
-    closeReason.select.required = !!outcome.select.value && outcome.select.value !== 'Выиграна';
-    winner.required = outcome.select.value === 'Проиграна';
-  };
-  outcome.select.addEventListener('change', syncOutcome); syncOutcome();
-  const modal = openEntityModal(deal ? 'Сделка · дополнительные поля и закрытие' : 'Новая сделка', form, !!deal);
+  const modal = openEntityModal(deal ? 'Сделка · основные параметры' : 'Новая сделка', form, true);
   saveWithFeedback(form, async () => {
     if (!company.select.value) {
-      company.input.setCustomValidity('Выберите контрагента из списка');
-      company.input.reportValidity();
+      company.input.setCustomValidity('Выберите контрагента из списка'); company.input.reportValidity();
       throw new Error('Контрагент не выбран');
     }
+    company.input.setCustomValidity('');
     const contactId = val(contact.select);
-    const payload = { name: automaticName(), topic: topic.value.trim(), companyId: val(company.select), contactId,
+    const payload = {
+      name: automaticName(), topic: topic.value.trim(), companyId: val(company.select), contactId,
       contacts: contactId ? [{ contactId, role: deal?.contacts?.[0]?.role || '', influence: deal?.contacts?.[0]?.influence || '' }, ...(deal?.contacts || []).slice(1)] : [],
       partnerId: val(partner.select), product: product.select.value, subproduct: subproduct.select.value,
-      stage: stage.select.value, status: status.select.value, probabilityCategory: probability.select.value,
-      competitorIds: [...competitors.selectedOptions].map((o) => o.value), risks: risks.value,
-      contractDate: contractDate.value, workStartDate: workStartDate.value,
-      clientEvent: clientEvent.value.trim(), clientEventDate: clientEventDate.value,
-      clientInvestment: investment.select.value, budget: budget.select.value, purchaseType: purchase.select.value,
-      nextStepText: nextText.value.trim(), nextStepDate: nextDate.value, notes: notes.value,
-      ...(deal ? { outcome: outcome.select.value, closeReason: closeReason.select.value, winner: winner.value.trim() } : {}),
+      stage: stage.select.value, status: status.select.value, employeeId: val(owner.select),
+      userCount: users.value === '' ? 0 : Math.max(0, Math.floor(Number(users.value) || 0)),
+      source: source.select.value, channel: channel.select.value, probabilityCategory: probability.select.value,
+      amountMode: amountMode.select.value,
+      manualValue: manualValue.value === '' ? null : Math.max(0, Number(manualValue.value) || 0), notes: notes.value,
     };
     const saved = deal ? await store.updateDeal(deal.id, payload) : await store.addDeal(payload);
     modal.close(); onSaved?.(saved); return saved;
@@ -280,6 +259,14 @@ export function openPaymentForm(payment = null, { presets = {}, onSaved = null }
 
 export function openActivityForm(activity = null, { presets = {}, onSaved = null } = {}) {
   if (!ensureWritable()) return;
+  if (activity?.dealId || activity?.appendOnly) {
+    toast('События сделки не редактируются. Добавьте новое уточняющее событие в карточке сделки.', { icon: 'info' });
+    return;
+  }
+  if (!activity && presets.dealId) {
+    const linkedDeal = store.dealById(presets.dealId);
+    if (linkedDeal) { openDealEventForm(linkedDeal, { onSaved }); return; }
+  }
   const data = { ...presets, ...activity };
   const date = textInput({ value: data.date || todayISO(), type: 'date', max: todayISO(), required: true });
   const employee = makeSelect(recordOptions(store.activeEmployees([data.employeeId]), 'Не указан'), data.employeeId || (store.currentEmployee()?.active !== false ? store.currentEmployee()?.id : '') || '');
@@ -301,6 +288,13 @@ export function openActivityForm(activity = null, { presets = {}, onSaved = null
     el('div.form-grid', {}, field('Контакт', contact.wrap), field('Контрагент', company.wrap)),
     field('Детали', notes), submitRow(activity ? 'Сохранить событие' : 'Добавить событие'));
   const modal = openEntityModal(activity ? 'Событие' : 'Новое событие', form);
+  deal.select.addEventListener('change', () => {
+    if (activity || !deal.select.value) return;
+    const linkedDeal = store.dealById(deal.select.value);
+    if (!linkedDeal) return;
+    modal.close();
+    openDealEventForm(linkedDeal, { presets: { type: type.select.value, summary: summary.value }, onSaved });
+  });
   saveWithFeedback(form, async () => {
     if (date.value > todayISO()) throw new Error('Событие не может быть датировано будущим');
     const payload = { date: date.value, employeeId: val(employee.select), type: type.select.value,

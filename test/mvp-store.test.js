@@ -75,22 +75,28 @@ describe('MVP v2.1 lead and deal rules', () => {
     expect(store.salesTeamFor(second.id)[0]).toMatchObject({ employeeId: b.id, primary: true });
   });
 
-  it('requires a winner on loss and forbids future customer events', async () => {
+  it('requires valid closure data and forbids future customer events', async () => {
     const store = await freshStore();
     const deal = await store.addDeal({ name: 'Сделка', stage: 's5' });
-    await expect(store.updateDeal(deal.id, { outcome: 'Проиграна' })).rejects.toThrow('кто выиграл');
-    await expect(store.updateDeal(deal.id, { outcome: 'Проиграна', winner: 'Конкурент' })).rejects.toThrow('причину');
-    await store.updateDeal(deal.id, { outcome: 'Проиграна', winner: 'Конкурент', closeReason: 'Проиграли конкуренту — цена' });
-    expect(store.dealById(deal.id)).toMatchObject({ stage: 's5', outcome: 'Проиграна', winner: 'Конкурент' });
+    await expect(store.updateDeal(deal.id, { outcome: 'Проиграна' })).rejects.toThrow('причину');
+    await expect(store.updateDeal(deal.id, {
+      outcome: 'Проиграна', closeReason: 'Выбран другой поставщик', winner: 'Победителя нет',
+    })).rejects.toThrow('нельзя');
+    await store.updateDeal(deal.id, {
+      outcome: 'Проиграна', winner: 'Неизвестно', closeReason: 'Цена или коммерческие условия',
+    });
+    expect(store.dealById(deal.id)).toMatchObject({
+      stage: 'lost', status: 'Завершена', outcome: 'Проиграна', winner: 'Неизвестно',
+    });
     await store.updateDeal(deal.id, { outcome: 'Выиграна' });
-    expect(store.dealById(deal.id)).toMatchObject({ stage: 's8', outcome: 'Выиграна' });
-    await store.moveDeal(deal.id, 's9', { preserveOutcome: true });
-    expect(store.dealById(deal.id)).toMatchObject({ stage: 's9', outcome: 'Выиграна' });
+    expect(store.dealById(deal.id)).toMatchObject({ stage: 'won', status: 'Завершена', outcome: 'Выиграна' });
     expect(store.dealById(deal.id).closedAt).toBeTypeOf('number');
     await expect(store.addActivity({ summary: 'Будущее', date: '2999-01-01', dealId: deal.id }))
       .rejects.toThrow('будущим');
-    const activity = await store.addActivity({ summary: 'Прошлое', date: '2026-01-10', dealId: deal.id });
-    await expect(store.updateActivity(activity.id, { date: '2999-01-01' })).rejects.toThrow('будущим');
+    const activity = await store.addActivity({
+      summary: 'Прошлое', date: '2026-01-10', dealId: deal.id, stepAction: 'keep',
+    });
+    await expect(store.updateActivity(activity.id, { date: '2999-01-01' })).rejects.toThrow('нельзя редактировать');
   });
 });
 
@@ -294,9 +300,15 @@ describe('deal card editing and mixed sales teams', () => {
     await expectTouch(() => store.toggleTask(task.id, true));
     await expectTouch(() => store.deleteTask(task.id));
     let activity;
-    await expectTouch(async () => { activity = await store.addActivity({ summary: 'Звонок', date: '2026-01-10', dealId: deal.id }); });
-    await expectTouch(() => store.updateActivity(activity.id, { summary: 'Состоявшийся звонок' }));
-    await expectTouch(() => store.deleteActivity(activity.id));
+    await expectTouch(async () => {
+      activity = await store.addActivity({
+        summary: 'Звонок', date: '2026-01-10', dealId: deal.id,
+        nextStepText: 'Отправить итоги', nextStepDate: '2026-01-11', assigneeId: employee.id,
+      });
+    });
+    expect(activity.appendOnly).toBe(true);
+    await expect(store.updateActivity(activity.id, { summary: 'Состоявшийся звонок' })).rejects.toThrow('нельзя редактировать');
+    await expect(store.deleteActivity(activity.id)).rejects.toThrow('нельзя удалять');
   });
 
   it('removes and restores contact membership in a sales team with the contact', async () => {

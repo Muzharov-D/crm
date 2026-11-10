@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   STAGES, OPEN_STAGES, stageInfo, isOpen, probabilityOf, weightedValue,
-  pipelineValue, weightedPipeline, weightedValue, stageSummary, forecastByMonth,
+  pipelineValue, weightedPipeline, stageSummary, forecastByMonth,
   winRate, wonInMonth, avgSalesCycle,
   resolveStages, openStages, firstStageId, MAX_OPEN_STAGES,
   daysInStage, isStalled, stalledDeals, stageVelocity,
@@ -17,9 +17,9 @@ const deal = (overrides = {}) => ({
 });
 
 describe('stages', () => {
-  it('defines the ten canonical stages', () => {
-    expect(STAGES).toHaveLength(10);
-    expect(OPEN_STAGES.map((s) => s.id)).toEqual(['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10']);
+  it('defines seven open stages and two terminal outcomes', () => {
+    expect(STAGES).toHaveLength(7);
+    expect(OPEN_STAGES.map((s) => s.id)).toEqual(['s1', 's2', 's3', 's4', 's5', 's6', 's7']);
   });
 
   it('stageInfo falls back to the first stage for unknown ids', () => {
@@ -35,19 +35,20 @@ describe('stages', () => {
 });
 
 describe('canonical stages', () => {
-  const ids = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10'];
+  const ids = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 'won', 'lost'];
 
-  it('always resolves the fixed S1–S10 funnel, ignoring legacy custom settings', () => {
+  it('always resolves the fixed S1–S7 funnel, ignoring legacy custom settings', () => {
     for (const settings of [{}, { stages: [] }, { stages: [{ id: 'demo', probability: 0.4 }] }]) {
       expect(resolveStages(settings).map((stage) => stage.id)).toEqual(ids);
     }
-    expect(openStages(resolveStages())).toHaveLength(MAX_OPEN_STAGES);
+    expect(openStages(resolveStages())).toHaveLength(7);
+    expect(MAX_OPEN_STAGES).toBe(10);
     expect(firstStageId(resolveStages())).toBe('s1');
   });
 
   it('keeps the prescribed probabilities, including an unweighted S1', () => {
     expect(resolveStages().map((stage) => stage.probability)).toEqual([
-      null, 0.05, 0.15, 0.25, 0.35, 0.45, 0.85, 1, 1, 1,
+      null, 0.05, 0.15, 0.25, 0.35, 0.45, 0.85, 1, 0,
     ]);
   });
 });
@@ -139,7 +140,7 @@ describe('pipeline totals', () => {
 
   it('stageSummary reports counts and totals in canonical order', () => {
     const summary = stageSummary(deals);
-    expect(summary.map((s) => s.stage)).toEqual(['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10']);
+    expect(summary.map((s) => s.stage)).toEqual(['s1', 's2', 's3', 's4', 's5', 's6', 's7']);
     const proposal = summary.find((s) => s.stage === 's5');
     expect(proposal).toMatchObject({ count: 1, value: 10000, weighted: 3500 });
     const qualified = summary.find((s) => s.stage === 's2');
@@ -454,7 +455,7 @@ describe('time in stage', () => {
     expect(byStage.s1).toMatchObject({ days: 15, count: 2 });   // (10 + 20) / 2
     expect(byStage.s2).toMatchObject({ days: 15, count: 1 });
     expect(byStage.s5).toMatchObject({ days: null, count: 0 });
-    expect(v.map((r) => r.stage)).toEqual(['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10']);
+    expect(v.map((r) => r.stage)).toEqual(['s1', 's2', 's3', 's4', 's5', 's6', 's7']);
   });
 });
 

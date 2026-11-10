@@ -20,7 +20,7 @@ function duplicateGroups(rows, keyOf) {
  * Actionable data-quality findings. A finding always points to records the
  * user can open and fix; there is no opaque "quality score".
  */
-export function dataQuality({ companies = [], contacts = [], deals = [], leads = [], tasks = [] }, today = todayISO()) {
+export function dataQuality({ companies = [], contacts = [], deals = [], leads = [], tasks = [], dealSteps = [] }, today = todayISO()) {
   const companyDuplicates = [
     ...duplicateGroups(companies, (c) => clean(c.inn) && `inn:${clean(c.inn)}`),
     ...duplicateGroups(companies, (c) => clean(c.name) && `name:${clean(c.name)}`),
@@ -29,8 +29,8 @@ export function dataQuality({ companies = [], contacts = [], deals = [], leads =
     ...duplicateGroups(contacts, (c) => clean(c.email) && `email:${clean(c.email)}`),
     ...duplicateGroups(contacts, (c) => digits(c.phone).length >= 10 && `phone:${digits(c.phone).slice(-10)}`),
   ];
-  const dealsWithoutNextStep = deals.filter((d) => openDeal(d) && !String(d.nextStepText || '').trim()
-    && !tasks.some((t) => t.dealId === d.id && !t.done && t.status !== 'Выполнено'));
+  const dealsWithoutNextStep = deals.filter((deal) => openDeal(deal)
+    && !dealSteps.some((step) => step.dealId === deal.id && step.status === 'active'));
   const leadsWithoutOwner = leads.filter((l) => openLead(l) && !l.employeeId);
   const overdueTasks = tasks.filter((t) => !t.done && t.status !== 'Выполнено' && t.due && t.due < today);
   const dealsWithoutCompany = deals.filter((d) => openDeal(d) && !d.companyId);
@@ -55,6 +55,18 @@ export function operationalAlerts(data, settings = {}, today = todayISO()) {
       detail: `Просрочено · срок ${formatDate(task.due)}`, hash: '#/followups', at: task.due,
     });
   }
+  const employeeId = data.currentEmployee?.()?.id || null;
+  for (const note of (data.dealNotifications || []).filter((row) => row.active
+    && (!employeeId || row.employeeId === employeeId))) {
+    const step = (data.dealSteps || []).find((row) => row.id === note.stepId);
+    const deal = (data.deals || []).find((row) => row.id === note.dealId);
+    if (!step || !deal) continue;
+    alerts.push({
+      id: note.id, notificationId: note.id, tone: 'critical', title: `Просрочен шаг: ${step.action}`,
+      detail: `${deal.name} · ${note.overdueDays} дн. · срок ${formatDate(step.due)}${note.readAt ? ' · прочитано, просрочка актуальна' : ''}`,
+      hash: `#/pipeline?id=${deal.id}`, at: step.due, readAt: note.readAt,
+    });
+  }
   const staleDays = Number(settings.staleDays) > 0 ? Number(settings.staleDays) : 14;
   const threshold = Date.parse(`${today}T23:59:59`) - staleDays * 86400000;
   for (const deal of (data.deals || []).filter(openDeal)) {
@@ -70,7 +82,7 @@ export function operationalAlerts(data, settings = {}, today = todayISO()) {
   for (const deal of quality.dealsWithoutNextStep.slice(0, 5)) {
     alerts.push({
       id: `next-${deal.id}`, tone: 'info', title: deal.name,
-      detail: 'Нет следующего шага или открытой задачи', hash: `#/pipeline?id=${deal.id}`, at: deal.updatedAt,
+      detail: 'У активной сделки не назначен единый следующий шаг', hash: `#/pipeline?id=${deal.id}`, at: deal.updatedAt,
     });
   }
   for (const lead of quality.leadsWithoutOwner.slice(0, 3)) {

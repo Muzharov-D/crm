@@ -42,6 +42,24 @@
       },
       getUser: () => json('/api/me', { cache: 'no-store' }),
     },
+    crm: {
+      async transaction(payload) {
+        const res = await fetch(localURL('/api/transaction'), {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          const err = new Error(body.message || `request failed: ${res.status}`);
+          err.status = res.status; err.code = body.error === 'stale_deal' ? 'STALE_DEAL' : body.error;
+          throw err;
+        }
+        const result = await res.json();
+        // A duplicate response means the server applied none of these writes:
+        // the original operation is already durable under the same operationId.
+        if (!result.duplicate) for (const row of payload.writes || []) seen.set(row.key, row.value);
+        return result;
+      },
+    },
     kv: {
       async get(key) {
         const { value } = await json(`/api/kv/${encodeURIComponent(key)}`, { cache: 'no-store' });

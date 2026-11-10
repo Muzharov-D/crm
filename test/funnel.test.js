@@ -135,6 +135,6 @@ describe('funnelReport', () => {
     const report = funnelReport([], stages);
     expect(report.totals).toMatchObject({ deals: 0, won: 0, wonRate: null });
     expect(report.rows.every((r) => r.entered === 0)).toBe(true);
-    expect(funnelReport(null, stages).rows).toHaveLength(10);
+    expect(funnelReport(null, stages).rows).toHaveLength(7);
   });
 });

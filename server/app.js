@@ -17,6 +17,7 @@ import { openStorage, cleanKey, cleanPath } from './storage.js';
 import { mergeValue } from './merge.js';
 import { parseUsers, canWrite } from './access.js';
 import { auditForKV, appendAudit, AUDIT_KEY } from './audit.js';
+import { runOverdue, startOverdueScheduler } from './overdue.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const production = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
@@ -40,6 +41,7 @@ const storage = await openStorage({
   databaseUrl: process.env.DATABASE_URL,
   dataDir: path.resolve(process.env.DATA_DIR || path.join(root, 'data')),
 });
+if (!process.env.VERCEL) startOverdueScheduler(storage);
 
 /* ---------- sessions: "login.expires.signature" in an HttpOnly cookie ---------- */
 
@@ -175,16 +177,26 @@ app.post('/api/logout', (req, res) => {
 
 /* Everything under /api below needs a session. */
 app.use('/api', (req, res, next) => {
-  const login = readSession(req);
+  const cronSecret = process.env.CRON_SECRET;
+  const cron = req.path === '/jobs/overdue' && req.get('x-vercel-cron') && cronSecret
+    && req.get('authorization') === `Bearer ${cronSecret}`;
+  const login = cron ? 'system-overdue' : readSession(req);
   if (!login) return res.status(401).json({ error: 'not_signed_in' });
   req.login = login;
-  req.user = users.get(login);
+  req.user = cron ? { role: 'admin' } : users.get(login);
   res.setHeader('Cache-Control', 'no-store');
   next();
 });
 
 app.get('/api/me', (req, res) => {
   res.json({ username: req.login, uuid: `local-${req.login}`, role: req.user.role });
+});
+
+app.get('/api/jobs/overdue', async (req, res, next) => {
+  const cronSecret = process.env.CRON_SECRET;
+  const fromCron = req.get('x-vercel-cron') && cronSecret && req.get('authorization') === `Bearer ${cronSecret}`;
+  if (!fromCron && req.user.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  try { res.json(await runOverdue(storage)); } catch (error) { next(error); }
 });
 
 app.get('/api/audit', async (req, res, next) => {
@@ -208,6 +220,60 @@ app.use('/api', (req, res, next) => {
     return res.status(403).json({ error: 'read_only', message: 'Роль наблюдателя позволяет только просматривать данные.' });
   }
   next();
+});
+
+app.post('/api/transaction', express.json({ limit: '25mb' }), async (req, res, next) => {
+  const writes = Array.isArray(req.body?.writes) ? req.body.writes : [];
+  const allowed = new Set([
+    'crm:deals:v1', 'crm:activities:v1', 'crm:deal-steps:v1', 'crm:deal-stage-history:v1',
+    'crm:deal-field-history:v1', 'crm:deal-notifications:v1',
+  ]);
+  if (!writes.length || writes.length > 12 || writes.some((row) => !allowed.has(cleanKey(row?.key)) || typeof row?.value !== 'string')) {
+    return res.status(400).json({ error: 'bad_transaction' });
+  }
+  const dealId = String(req.body?.dealId || '');
+  const operationId = String(req.body?.operationId || '');
+  const expectedRevision = req.body?.expectedRevision;
+  if (!dealId || !operationId || expectedRevision === undefined) return res.status(400).json({ error: 'revision_required' });
+  // Idempotency is checked before the revision: a retry necessarily carries
+  // the original, now-old revision and must recover the first successful
+  // operation rather than report a false editing conflict. A later failure
+  // still rolls back every earlier change in the same storage transaction.
+  writes.sort((a, b) => (a.key === 'crm:activities:v1' ? -1 : b.key === 'crm:activities:v1' ? 1 : a.key === 'crm:deals:v1' ? -1 : 0));
+  let audit = [];
+  try {
+    await storage.kvTransaction(writes.map((row) => ({
+      key: row.key,
+      change: (current) => {
+        if (row.key === 'crm:deals:v1') {
+          const deals = current ? JSON.parse(current) : [];
+          const deal = Array.isArray(deals) ? deals.find((item) => item.id === dealId) : null;
+          if (!deal || Number(deal.revision || 1) !== Number(expectedRevision)) {
+            const error = new Error('stale_deal'); error.code = 'STALE_DEAL'; throw error;
+          }
+        }
+        if (row.key === 'crm:activities:v1') {
+          const activities = current ? JSON.parse(current) : [];
+          if (Array.isArray(activities) && activities.some((item) => item.operationId === operationId)) {
+            const error = new Error('duplicate_operation'); error.code = 'DUPLICATE_OPERATION'; throw error;
+          }
+        }
+        audit.push(...auditForKV({ key: row.key, currentRaw: current, nextRaw: row.value, actor: req.login }));
+        return row.value;
+      },
+    })));
+    await appendAudit(storage, audit).catch((err) => console.error('audit:', err));
+    res.json({ ok: true });
+  } catch (error) {
+    if (error.code === 'STALE_DEAL') return res.status(409).json({ error: 'stale_deal', message: 'Сделка уже изменена в другой вкладке.' });
+    if (error.code === 'DUPLICATE_OPERATION') {
+      const raw = await storage.kvGet('crm:activities:v1');
+      const activities = raw ? JSON.parse(raw) : [];
+      const activity = Array.isArray(activities) ? activities.find((item) => item.operationId === operationId) : null;
+      return res.json({ ok: true, duplicate: true, activity: activity || null });
+    }
+    next(error);
+  }
 });
 
 app.get('/api/kv/:key', async (req, res, next) => {

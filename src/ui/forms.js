@@ -105,7 +105,7 @@ export function searchSelect(initialOptions, value = '', props = {}) {
     const previous = select.value;
     current = next || '';
     select.value = current;
-    input.value = labelFor(current);
+    input.value = current ? labelFor(current) : '';
     validity();
     if (dispatch && previous !== select.value) select.dispatchEvent(new Event('change', { bubbles: true }));
   };
@@ -123,8 +123,10 @@ export function searchSelect(initialOptions, value = '', props = {}) {
     close();
     input.focus({ preventScroll: true });
   };
-  const renderMenu = () => {
-    const query = input.value.trim().toLocaleLowerCase('ru');
+  const renderMenu = (queryOverride = null) => {
+    // Focusing a filled picker opens the whole directory, not just the label
+    // of the current selection. Typing still narrows it continuously.
+    const query = queryOverride === null ? input.value.trim().toLocaleLowerCase('ru') : queryOverride;
     matches = flat().filter((option) => !query || option.label.toLocaleLowerCase('ru').includes(query));
     const visible = matches.slice(0, limit);
     clear(menu);
@@ -149,7 +151,8 @@ export function searchSelect(initialOptions, value = '', props = {}) {
     input.setAttribute('aria-expanded', 'true');
   };
 
-  input.addEventListener('focus', renderMenu);
+  input.addEventListener('focus', () => renderMenu(''));
+  input.addEventListener('click', () => { if (menu.hidden) renderMenu(''); });
   input.addEventListener('input', () => {
     const query = input.value.trim().toLocaleLowerCase('ru');
     const exact = flat().find((option) => option.label.toLocaleLowerCase('ru') === query);
@@ -167,7 +170,7 @@ export function searchSelect(initialOptions, value = '', props = {}) {
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') { close(); setValue(select.value); return; }
     if (event.key === 'ArrowDown') {
-      event.preventDefault(); renderMenu(); menu.querySelector('button')?.focus();
+      event.preventDefault(); renderMenu(''); menu.querySelector('button')?.focus();
     }
     if (event.key === 'Enter' && !menu.hidden && matches.length) {
       event.preventDefault(); choose(matches[0].value);

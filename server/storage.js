@@ -62,18 +62,27 @@ async function postgresStorage(url) {
         [key, value],
       );
     },
-    /** Read, change and write one key under a row lock, so concurrent saves queue up. */
+    /** Read, change and write one key under the same lock as multi-key commands. */
     async kvUpdate(key, change) {
+      return (await this.kvTransaction([{ key, change }]))[0];
+    },
+    /** All CRM writes in one database transaction; no partial event/step save. */
+    async kvTransaction(writes) {
       const client = await pool.connect();
       try {
         await client.query('begin');
-        await client.query('insert into crm_kv (key, value) values ($1, $2) on conflict (key) do nothing', [key, '']);
-        const r = await client.query('select value from crm_kv where key = $1 for update', [key]);
-        const current = r.rows[0]?.value || null;
-        const next = change(current);
-        await client.query('update crm_kv set value = $2, updated_at = now() where key = $1', [key, next]);
+        await client.query("select pg_advisory_xact_lock(hashtext('crm_kv_transaction'))");
+        const results = [];
+        for (const { key, change } of writes) {
+          await client.query('insert into crm_kv (key, value) values ($1, $2) on conflict (key) do nothing', [key, '']);
+          const r = await client.query('select value from crm_kv where key = $1 for update', [key]);
+          const current = r.rows[0]?.value || null;
+          const next = await change(current);
+          await client.query('update crm_kv set value = $2, updated_at = now() where key = $1', [key, next]);
+          results.push(next);
+        }
         await client.query('commit');
-        return next;
+        return results;
       } catch (err) {
         await client.query('rollback').catch(() => {});
         throw err;
@@ -123,12 +132,36 @@ async function fileStorage(dataDir) {
   return {
     kind: 'files',
     kvUpdate(key, change) {
-      const run = (queues.get(key) || Promise.resolve()).catch(() => {}).then(async () => {
-        const next = change(await this.kvGet(key));
-        await this.kvSet(key, next);
-        return next;
+      return this.kvTransaction([{ key, change }]).then((rows) => rows[0]);
+    },
+    kvTransaction(writes) {
+      const run = (queues.get('*') || Promise.resolve()).catch(() => {}).then(async () => {
+        const originals = new Map();
+        const current = new Map();
+        try {
+          const results = [];
+          for (const { key, change } of writes) {
+            if (!originals.has(key)) {
+              const raw = await this.kvGet(key);
+              originals.set(key, raw);
+              current.set(key, raw);
+            }
+            const next = await change(current.get(key));
+            await this.kvSet(key, next);
+            current.set(key, next);
+            results.push(next);
+          }
+          return results;
+        } catch (error) {
+          // Restore every touched key before exposing the failure.
+          for (const [key, raw] of originals) {
+            if (raw === null) await this.kvDelete(key);
+            else await this.kvSet(key, raw);
+          }
+          throw error;
+        }
       });
-      queues.set(key, run);
+      queues.set('*', run);
       return run;
     },
     async kvGet(key) {

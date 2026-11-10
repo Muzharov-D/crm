@@ -10,7 +10,9 @@ const date = (v, fallback = '') => isValidISODate(v) ? v : fallback;
 export const LEGACY_DEAL_STAGES = {
   new: 's1', qualified: 's2', proposal: 's5', negotiation: 's6',
   s0: 's1', s1: 's1', s2: 's2', s3: 's3', s4: 's4', s5: 's5', s6: 's6', s7: 's7',
-  s8: 's8', s9: 's9', s10: 's10',
+  // S8–S10 were the old won/implementation/complete tail. The new model has
+  // one terminal result field: the stage itself.
+  s8: 'won', s9: 'won', s10: 'won', won: 'won', lost: 'lost',
 };
 export const canonicalDealStage = (stage) => LEGACY_DEAL_STAGES[text(stage).toLowerCase()] || '';
 export const canonicalLeadStage = (stage) => {
@@ -170,6 +172,7 @@ export function migratePayments(deals, existing = [], now = new Date()) {
   const out = existing.map(normalizePayment);
   const covered = new Set(out.map((p) => p.dealId));
   for (const deal of deals) {
+    if (deal.amountMode === 'manual') continue;
     const amount = Math.max(0, Number(deal.value) || 0);
     if (!amount || covered.has(deal.id)) continue;
     const basis = deal.expectedClose || (deal.closedAt ? todayISO(new Date(deal.closedAt)) : todayISO(new Date(deal.createdAt)));
