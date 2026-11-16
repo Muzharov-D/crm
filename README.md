@@ -51,6 +51,15 @@ backward compatibility. Passwords may contain colons: only a final segment
 exactly matching `admin`, `manager`, or `viewer` is parsed as the role.
 Use a unique random `SESSION_SECRET` in production and never commit `.env`.
 
+### Read-only key for agents
+
+Optional `CRM_READ_TOKEN` (at least 32 characters) lets an agent such as the
+morning briefing read data without a login: `Authorization: Bearer <token>`
+on `GET /api/kv/<key>` (for example `crm:tasks:v1`, `crm:deals:v1`). Every
+other request with the key, including writes, files and the change journal,
+is refused. Without the variable the key is off. To revoke it, change or
+delete the variable and redeploy.
+
 The server records create, update, delete, and document-upload events with
 actor, timestamp, record, and changed field names. The journal retains the
 latest 500 events and cannot be overwritten through the public data API.

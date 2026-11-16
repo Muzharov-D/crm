@@ -27,6 +27,32 @@ export function parseUsers(raw) {
   return users;
 }
 
+/**
+ * CRM_READ_TOKEN: a key for agents such as the morning briefing.
+ * With `Authorization: Bearer <token>` a request may only read one KV
+ * collection (GET /api/kv/<key>); writes, files and the journal are refused.
+ */
+export const READ_TOKEN_MIN = 32;
+
+export function readTokenFrom(raw) {
+  const token = String(raw || '').trim();
+  if (token && token.length < READ_TOKEN_MIN) {
+    throw new Error(`CRM_READ_TOKEN must be at least ${READ_TOKEN_MIN} characters.`);
+  }
+  return token;
+}
+
+export function agentMayRead(method, path) {
+  if (method !== 'GET' && method !== 'HEAD') return false;
+  const match = /^\/kv\/([^/]+)$/.exec(path);
+  if (!match) return false;
+  try {
+    return decodeURIComponent(match[1]) !== 'crm:audit:v1';
+  } catch {
+    return false;
+  }
+}
+
 export function canWrite(user, key = '') {
   if (!user || user.role === 'viewer') return false;
   if (key === 'crm:audit:v1') return false;
