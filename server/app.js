@@ -8,6 +8,8 @@
  *   SESSION_SECRET  signs the session cookie (required in production)
  *   DATABASE_URL    Postgres; without it data goes to DATA_DIR as files
  *   DATA_DIR        local data folder (default ./data)
+ *   CRM_READ_TOKEN  optional, 32+ characters: `Authorization: Bearer <token>`
+ *                   may read KV collections (GET /api/kv/<key>) and nothing else
  */
 import express from 'express';
 import crypto from 'node:crypto';
@@ -15,7 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openStorage, cleanKey, cleanPath } from './storage.js';
 import { mergeValue } from './merge.js';
-import { parseUsers, canWrite } from './access.js';
+import { parseUsers, canWrite, readTokenFrom, agentMayRead } from './access.js';
 import { auditForKV, appendAudit, AUDIT_KEY } from './audit.js';
 import { runOverdue, startOverdueScheduler } from './overdue.js';
 
@@ -28,6 +30,7 @@ const users = parseUsers(process.env.CRM_USERS);
 if (!users.size) {
   throw new Error('CRM_USERS is empty: set it to "login:password".');
 }
+const readToken = readTokenFrom(process.env.CRM_READ_TOKEN);
 
 let secret = process.env.SESSION_SECRET;
 if (!secret) {
@@ -180,6 +183,15 @@ app.use('/api', (req, res, next) => {
   const cronSecret = process.env.CRON_SECRET;
   const cron = req.path === '/jobs/overdue' && req.get('x-vercel-cron') && cronSecret
     && req.get('authorization') === `Bearer ${cronSecret}`;
+  const bearer = /^Bearer\s+(.+)$/i.exec(req.get('authorization') || '');
+  if (!cron && readToken && bearer) {
+    if (!sameText(bearer[1].trim(), readToken)) return res.status(401).json({ error: 'bad_token' });
+    if (!agentMayRead(req.method, req.path)) return res.status(403).json({ error: 'read_only' });
+    req.login = 'read-token';
+    req.user = { role: 'viewer' };
+    res.setHeader('Cache-Control', 'no-store');
+    return next();
+  }
   const login = cron ? 'system-overdue' : readSession(req);
   if (!login) return res.status(401).json({ error: 'not_signed_in' });
   req.login = login;
