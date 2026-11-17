@@ -30,7 +30,7 @@ import {
 import { contactByEmail } from '../lib/dupes.js';
 import { openCloseReasonForm } from './close-reason.js';
 import { todayISO, clamp, countLabel } from '../lib/util.js';
-import { canWrite } from '../lib/access.js';
+import { canWrite, canAdmin } from '../lib/access.js';
 
 export function ensureWritable() {
   if (canWrite(store.user)) return true;
@@ -843,7 +843,7 @@ export function openActivityForm(activity = null, { presets = {}, onSaved = null
     ),
     field('Заметки', notes),
     submitRow(activity ? 'Сохранить' : 'Записать', {
-      onDelete: activity && deleteAction({
+      onDelete: activity && canAdmin(store.user) && deleteAction({
         title: 'Удалить запись?',
         message: 'Запись исчезнет из истории контакта, компании и сделки и 30 дней пролежит в корзине.',
         run: () => store.deleteActivity(activity.id),
@@ -954,7 +954,7 @@ export function openTaskForm(task = null, { presets = {}, onSaved = null } = {})
       }),
     }, ' Добавить в календарь'),
     submitRow(task ? 'Сохранить' : 'Добавить задачу', {
-      onDelete: task && deleteAction({
+      onDelete: task && canAdmin(store.user) && deleteAction({
         title: 'Удалить задачу?',
         message: 'Задача 30 дней пролежит в корзине. Выполненные задачи можно не удалять, а просто оставить отмеченными.',
         run: () => store.deleteTask(task.id),

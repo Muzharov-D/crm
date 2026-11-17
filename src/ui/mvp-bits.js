@@ -5,6 +5,7 @@ import { canWrite } from '../lib/access.js';
 import { dictionaryOptions } from '../lib/spec.js';
 import { formatDate, formatMoney, todayISO } from '../lib/util.js';
 import { openActivityForm, openTaskForm } from './mvp-forms.js';
+import { field, textInput } from './forms.js';
 
 export const pageHead = (title, sub = '', ...actions) => el('div.view-head', {},
   el('div.grow.min0', {}, el('h1.view-title', {}, title), sub && el('p.view-sub', {}, sub)),
@@ -108,6 +109,56 @@ export function relatedRecords(kind, id) {
         actionButton('Событие', () => openActivityForm(null, { presets }), { iconName: 'plus' }))),
     el('div.related-filters', {}, search, status, employee, from, to), body,
     el('p.field-hint', {}, `Новые записи получают связь автоматически, включая однозначные связи родительских объектов. Дата создания — ${todayISO()}; ответственный по умолчанию — текущий сотрудник.`));
+}
+
+export function inlineField({ label, key, value = '', type = 'text', options = null, disabled = false,
+  save, queue, parse = (v) => v, focusPrefix = 'entity', hint = '', rows = 3, required = false }) {
+  const dataset = { focusKey: `${focusPrefix}-${key}` };
+  const control = options
+    ? el('select.select', { disabled, required, dataset },
+      options.map((option) => el('option', { value: option.value, selected: String(option.value) === String(value ?? '') }, option.label)))
+    : type === 'textarea'
+      ? el('textarea.input.textarea', { rows, disabled, required, dataset }, value || '')
+      : textInput({ value: value ?? '', type, disabled, required, dataset });
+  const read = () => parse(control.value);
+  if (!options && ['text', 'email', 'tel', 'number', 'textarea'].includes(type) && queue) {
+    control.addEventListener('input', () => queue({ [key]: read() }));
+  }
+  control.addEventListener('change', () => save({ [key]: read() }));
+  return { node: field(label, control, { hint }), control };
+}
+
+export function entityTabs(kind, tabs, current, onSelect) {
+  const tablist = el('div.deal-tabs.entity-tabs', { role: 'tablist', 'aria-label': `Разделы карточки: ${kind}` }, tabs.map(([key, label]) =>
+    el('button.deal-tab', {
+      type: 'button', role: 'tab', id: `${kind}-tab-${key}`, 'aria-controls': `${kind}-panel-${key}`,
+      'aria-selected': String(current === key), tabindex: current === key ? 0 : -1,
+      dataset: { tab: key, focusKey: `${kind}-tab-${key}` }, onclick: () => onSelect(key),
+      onkeydown: (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const index = tabs.findIndex(([tab]) => tab === key);
+        const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+          : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+        tablist.querySelector(`[data-tab="${tabs[nextIndex][0]}"]`)?.click();
+      },
+    }, label)));
+  return tablist;
+}
+
+export function fieldHistoryTable(rows) {
+  const body = rows.length
+    ? rows.map((row) => el('tr', {},
+      el('td', {}, new Date(row.at).toLocaleString('ru-RU')),
+      el('td', {}, row.actorName || 'Системный процесс'),
+      el('td', {}, row.label || row.field),
+      el('td', {}, row.previousDisplay || '—'),
+      el('td', {}, row.newDisplay || '—')))
+    : el('tr', {}, el('td', { colspan: 5 }, 'Изменений полей пока не зафиксировано'));
+  return el('div.table-wrap.registry-table-wrap', {}, el('table.data-table', {},
+    el('thead', {}, el('tr', {}, ['Дата и время', 'Пользователь / процесс', 'Поле', 'Старое значение', 'Новое значение']
+      .map((label) => el('th', {}, label)))),
+    el('tbody', {}, body)));
 }
 
 export function money(value) { return formatMoney(value || 0, store.settings.currency || 'RUB'); }

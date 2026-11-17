@@ -10,6 +10,7 @@ import { icon } from './icons.js';
 import { toast } from './toast.js';
 import { confirmDialog } from './modal.js';
 import { store } from '../lib/store.js';
+import { canAdmin } from '../lib/access.js';
 import { uploadFile, readFile, formatBytes, MAX_FILE_BYTES } from '../lib/files.js';
 import { section, deletedToast } from './bits.js';
 import { formatDate, todayISO } from '../lib/util.js';
@@ -79,7 +80,7 @@ function attachmentRow(a) {
       dataset: { focusKey: `file-download-${a.id}` },
       onclick: () => download(a),
     }),
-    el('button.icon-btn.row-edit', {
+    canAdmin(store.user) && el('button.icon-btn.row-edit', {
       html: icon('trash', 15, 2),
       'aria-label': `Удалить файл ${a.name}`,
       // Two files on one record may carry the same name, and the rebuilt

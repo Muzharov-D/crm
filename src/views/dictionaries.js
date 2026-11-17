@@ -1,7 +1,7 @@
 import { el, clear, keepingFocus } from '../ui/dom.js';
 import { store } from '../lib/store.js';
 import { DICTIONARY_DEFINITIONS, dictionary } from '../lib/spec.js';
-import { canWrite } from '../lib/access.js';
+import { canWrite, canAdmin } from '../lib/access.js';
 import { pageHead, actionButton } from '../ui/mvp-bits.js';
 import { confirmDialog } from '../ui/modal.js';
 
@@ -25,7 +25,7 @@ export function dictionariesView({ params }) {
           el('div.table-wrap', {}, el('table.data-table.compact', {}, el('thead', {}, el('tr', {}, el('th', {}, 'Значение'), definition.key === 'subproducts' && el('th', {}, 'Продукт'), el('th', {}, ''))),
             el('tbody', {}, values.map((v, index) => el('tr', {}, el('td', {}, typeof v === 'string' ? v : v.value),
               definition.key === 'subproducts' && el('td', {}, v.parent || '—'),
-              el('td', {}, canWrite(store.user) && actionButton('Удалить', async () => {
+              el('td', {}, canAdmin(store.user) && actionButton('Удалить', async () => {
                 if (!await confirmDialog({ title: 'Удалить значение справочника?', message: 'Существующие записи сохранят прежнее текстовое значение.' })) return;
                 await store.updateDictionary(definition.key, values.filter((_, i) => i !== index));
               }, { iconName: 'trash' }))))))),

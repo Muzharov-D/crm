@@ -57,20 +57,20 @@ export function roleLabel(role) {
 export function normalizeDealContacts(raw, primaryId = null) {
   const out = [];
   const seen = new Set();
-  const push = (contactId, role, influence = '') => {
+  const push = (contactId, role, influence = '', position = '') => {
     if (typeof contactId !== 'string' || !contactId || seen.has(contactId)) return;
     seen.add(contactId);
-    out.push({ contactId, role: normalizeRole(role), influence: String(influence ?? '').trim() });
+    out.push({ contactId, role: normalizeRole(role), influence: String(influence ?? '').trim(), position: String(position ?? '').trim() });
   };
   for (const entry of Array.isArray(raw) ? raw : []) {
     if (typeof entry === 'string') push(entry, '');
-    else if (entry && typeof entry === 'object') push(entry.contactId, entry.role, entry.influence);
+    else if (entry && typeof entry === 'object') push(entry.contactId, entry.role, entry.influence, entry.position);
   }
   const primary = typeof primaryId === 'string' && primaryId ? primaryId : null;
   if (primary) {
     const at = out.findIndex((e) => e.contactId === primary);
     if (at > 0) out.unshift(...out.splice(at, 1));
-    else if (at < 0) out.unshift({ contactId: primary, role: '', influence: '' });
+    else if (at < 0) out.unshift({ contactId: primary, role: '', influence: '', position: '' });
   }
   return out.slice(0, MAX_DEAL_CONTACTS);
 }
@@ -105,7 +105,7 @@ export function replacePrimary(list, contactId) {
   const rest = entries.slice(1).filter((e) => e?.contactId !== contactId);
   if (!contactId) return rest;
   const existing = entries.find((e) => e?.contactId === contactId);
-  return [{ contactId, role: normalizeRole(existing?.role), influence: String(existing?.influence ?? '') }, ...rest];
+  return [{ contactId, role: normalizeRole(existing?.role), influence: String(existing?.influence ?? ''), position: String(existing?.position ?? '') }, ...rest];
 }
 
 /** The list without a contact - what deleting that contact leaves behind. */
@@ -134,6 +134,7 @@ export function repointContact(list, fromId, toId) {
       contactId: id,
       role: id === toId ? normalizeRole(survivorRole || mergedRole) : normalizeRole(entry.role),
       influence: String(entry.influence ?? ''),
+      position: String(entry.position ?? ''),
     });
   }
   return out;
@@ -144,5 +145,5 @@ export function withContact(list, contactId, role = '') {
   const entries = Array.isArray(list) ? list : [];
   if (!contactId || entries.some((e) => e?.contactId === contactId)) return entries;
   if (entries.length >= MAX_DEAL_CONTACTS) return entries;
-  return [...entries, { contactId, role: normalizeRole(role), influence: '' }];
+  return [...entries, { contactId, role: normalizeRole(role), influence: '', position: '' }];
 }

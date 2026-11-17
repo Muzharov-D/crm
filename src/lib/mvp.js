@@ -33,8 +33,10 @@ export function normalizeLead(raw = {}) {
   return {
     ...raw,
     id: text(raw.id) || uid(), name: text(raw.name), status,
-    stage: canonicalLeadStage(raw.stage), source: text(raw.source),
+    stage: canonicalLeadStage(raw.stage), source: text(raw.source), channel: text(raw.channel),
     contactId: link(raw.contactId), companyId: link(raw.companyId), createdAt,
+    contactName: text(raw.contactName), contactTitle: text(raw.contactTitle),
+    phone: text(raw.phone), email: text(raw.email), companyName: text(raw.companyName), inn: text(raw.inn),
     closeReason: text(raw.closeReason), description: text(raw.description ?? raw.notes),
     product: text(raw.product), subproduct: text(raw.subproduct),
     employeeId: link(raw.employeeId), partnerId: link(raw.partnerId),

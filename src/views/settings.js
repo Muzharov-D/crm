@@ -33,7 +33,7 @@ import { sampleDataset } from '../lib/sample.js';
 import {
   todayISO, clamp, formatMoney, timeAgo, formatDate, plural, countLabel,
 } from '../lib/util.js';
-import { canWrite, roleLabel } from '../lib/access.js';
+import { canWrite, canAdmin, roleLabel } from '../lib/access.js';
 
 export async function confirmSignOut() {
   const ok = await confirmDialog({
@@ -302,7 +302,7 @@ export function settingsView() {
           el('span.stage-prob-field', {}, prob, el('span.prob-unit', { 'aria-hidden': 'true' }, '%')),
           move(-1),
           move(1),
-          remove
+          canAdmin(store.user) && remove
         )
       ));
     });
@@ -532,7 +532,7 @@ export function settingsView() {
           name,
           el('div.select-wrap.field-type-wrap', {}, type)
         ),
-        el('div.stage-edit-controls', {}, move(-1), move(1), remove),
+        el('div.stage-edit-controls', {}, move(-1), move(1), canAdmin(store.user) && remove),
         optionsInput && el('div.field-edit-options', {},
           optionsInput,
           el('span.field-hint', {}, 'Варианты через запятую.')
@@ -918,7 +918,7 @@ export function settingsView() {
             'aria-label': `Изменить шаблон «${t.name}»`,
             onclick: () => openTemplateForm(t, { onSaved: renderTemplates }),
           }),
-          el('button.icon-btn', {
+          canAdmin(store.user) && el('button.icon-btn', {
             html: icon('trash', 16, 2),
             'aria-label': `Удалить шаблон «${t.name}»`,
             onclick: async () => {
@@ -1014,7 +1014,7 @@ export function settingsView() {
           name,
           el('div.sub', {}, countLabel(t.count, RECORD_FORMS))
         ),
-        el('button.icon-btn', {
+        canAdmin(store.user) && el('button.icon-btn', {
           html: icon('trash', 16, 2),
           'aria-label': `Удалить метку «${t.name}»`,
           onclick: async () => {
@@ -1332,7 +1332,7 @@ export function settingsView() {
         );
       })),
       el('div.settings-body', {},
-        el('button.btn.btn-ghost.btn-sm.btn-danger-ghost', {
+        canAdmin(store.user) && el('button.btn.btn-ghost.btn-sm.btn-danger-ghost', {
           type: 'button',
           html: icon('trash', 14, 2),
           onclick: async () => {
@@ -1548,13 +1548,13 @@ export function settingsView() {
     ),
     section('Ваши данные', null,
       el('div.settings-list', {},
-        dataRow('merge', 'Проверить возможные дубли', 'Контакты и компании, которые похожи на одну и ту же запись', openDuplicatesReview),
+        canAdmin(store.user) && dataRow('merge', 'Проверить возможные дубли', 'Контакты и компании, которые похожи на одну и ту же запись', openDuplicatesReview),
         dataRow('fileUp', 'Импорт из CSV', 'Загрузить контакты, компании или сделки из таблицы', openCSVImport),
         dataRow('fileDown', 'Экспорт в CSV', 'По файлу на каждый тип записей — для таблиц и других программ', openCSVExport),
         dataRow('fileDown', 'Экспорт всех данных', 'Скачать JSON-файл со всеми данными', exportData),
-        dataRow('fileUp', 'Импорт из файла экспорта', 'Заменить данные ранее выгруженным файлом', importData),
-        dataRow('sparkle', 'Загрузить демо-данные', 'Посмотреть приложение на демонстрационной воронке', loadSample),
-        dataRow('trash', 'Удалить все данные', 'Стереть всё в этом аккаунте', eraseAll, true)
+        canAdmin(store.user) && dataRow('fileUp', 'Импорт из файла экспорта', 'Заменить данные ранее выгруженным файлом', importData),
+        canAdmin(store.user) && dataRow('sparkle', 'Загрузить демо-данные', 'Посмотреть приложение на демонстрационной воронке', loadSample),
+        canAdmin(store.user) && dataRow('trash', 'Удалить все данные', 'Стереть всё в этом аккаунте', eraseAll, true)
       ),
       backupRow
     ),

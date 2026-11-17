@@ -17,7 +17,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openStorage, cleanKey, cleanPath } from './storage.js';
 import { mergeValue } from './merge.js';
-import { parseUsers, canWrite, readTokenFrom, agentMayRead } from './access.js';
+import {
+  parseUsers, canWrite, readTokenFrom, agentMayRead, removesRecords, DEAL_TRANSACTION_KEYS,
+} from './access.js';
 import { auditForKV, appendAudit, AUDIT_KEY } from './audit.js';
 import { runOverdue, startOverdueScheduler } from './overdue.js';
 
@@ -236,10 +238,7 @@ app.use('/api', (req, res, next) => {
 
 app.post('/api/transaction', express.json({ limit: '25mb' }), async (req, res, next) => {
   const writes = Array.isArray(req.body?.writes) ? req.body.writes : [];
-  const allowed = new Set([
-    'crm:deals:v1', 'crm:activities:v1', 'crm:deal-steps:v1', 'crm:deal-stage-history:v1',
-    'crm:deal-field-history:v1', 'crm:deal-notifications:v1',
-  ]);
+  const allowed = DEAL_TRANSACTION_KEYS;
   if (!writes.length || writes.length > 12 || writes.some((row) => !allowed.has(cleanKey(row?.key)) || typeof row?.value !== 'string')) {
     return res.status(400).json({ error: 'bad_transaction' });
   }
@@ -257,6 +256,9 @@ app.post('/api/transaction', express.json({ limit: '25mb' }), async (req, res, n
     await storage.kvTransaction(writes.map((row) => ({
       key: row.key,
       change: (current) => {
+        if (req.user.role !== 'admin' && removesRecords(row.key, current, row.value)) {
+          const error = new Error('admin_only'); error.code = 'ADMIN_ONLY'; throw error;
+        }
         if (row.key === 'crm:deals:v1') {
           const deals = current ? JSON.parse(current) : [];
           const deal = Array.isArray(deals) ? deals.find((item) => item.id === dealId) : null;
@@ -277,6 +279,7 @@ app.post('/api/transaction', express.json({ limit: '25mb' }), async (req, res, n
     await appendAudit(storage, audit).catch((err) => console.error('audit:', err));
     res.json({ ok: true });
   } catch (error) {
+    if (error.code === 'ADMIN_ONLY') return res.status(403).json({ error: 'admin_only', message: 'Удаление записей доступно только администратору.' });
     if (error.code === 'STALE_DEAL') return res.status(409).json({ error: 'stale_deal', message: 'Сделка уже изменена в другой вкладке.' });
     if (error.code === 'DUPLICATE_OPERATION') {
       const raw = await storage.kvGet('crm:activities:v1');
@@ -311,17 +314,22 @@ app.put('/api/kv/:key', express.json({ limit: '25mb' }), async (req, res, next) 
     let events = [];
     const stored = await storage.kvUpdate(key, (current) => {
       const next = hasBase ? mergeValue(base, value, current) : value;
+      if (req.user.role !== 'admin' && removesRecords(key, current, next)) {
+        const error = new Error('admin_only'); error.code = 'ADMIN_ONLY'; throw error;
+      }
       events = auditForKV({ key, currentRaw: current, nextRaw: next, actor: req.login });
       return next;
     });
     await appendAudit(storage, events).catch((err) => console.error('audit:', err));
     res.json({ ok: true, merged: stored !== value });
   } catch (err) {
+    if (err.code === 'ADMIN_ONLY') return res.status(403).json({ error: 'admin_only', message: 'Удаление записей доступно только администратору.' });
     next(err);
   }
 });
 
 app.delete('/api/kv/:key', async (req, res, next) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'admin_only', message: 'Удаление доступно только администратору.' });
   const key = cleanKey(req.params.key);
   if (!key) return res.status(400).json({ error: 'bad_key' });
   try {
@@ -376,6 +384,7 @@ app.put('/api/files', express.raw({ type: () => true, limit: '50mb' }), async (r
 });
 
 app.delete('/api/files', async (req, res, next) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'admin_only', message: 'Удаление документов доступно только администратору.' });
   const p = cleanPath(req.query.path);
   if (!p) return res.status(400).json({ error: 'bad_path' });
   try {

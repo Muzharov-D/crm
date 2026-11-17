@@ -34,6 +34,7 @@ import { attachmentsSection } from '../ui/attachments.js';
 import { exportRecords } from '../lib/csv.js';
 import { exportContext } from '../ui/csv.js';
 import { downloadFile } from '../ui/download.js';
+import { canAdmin } from '../lib/access.js';
 
 export function leadsView({ params }) {
   const id = params.get('id');
@@ -183,7 +184,7 @@ function leadsList(params) {
           toast(`${countLabel(records.length, ['контакт', 'контакта', 'контактов'])} ${plural(records.length, ['экспортирован', 'экспортированы', 'экспортировано'])}`, { icon: 'fileDown' });
         },
       },
-      {
+      ...(canAdmin(store.user) ? [{
         icon: 'trash', label: 'Удалить', danger: true,
         onClick: async () => {
           if (!await confirmBulkDelete(selection.size, plural(selection.size, ['контакт', 'контакта', 'контактов']))) return;
@@ -193,7 +194,7 @@ function leadsList(params) {
             toast(`${countLabel(entries.length, ['контакт', 'контакта', 'контактов'])} ${plural(entries.length, ['удалён', 'удалены', 'удалено'])}`, { icon: 'trash' });
           } catch { fail(); }
         },
-      },
+      }] : []),
     ];
   }
 
@@ -468,7 +469,7 @@ function leadDetail(id) {
             html: icon('pencil', 15, 2),
             onclick: () => openContactForm(contact),
           }, ' Изменить'),
-          el('button.icon-btn', {
+          canAdmin(store.user) && el('button.icon-btn', {
             html: icon('trash', 17, 2), 'aria-label': `Удалить ${contact.name}`,
             onclick: async () => {
               const ok = await confirmDialog({

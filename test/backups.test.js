@@ -36,7 +36,7 @@ function installPuterMock() {
       }),
     },
     auth: {
-      getUser: vi.fn(async () => ({ username: 'tester' })),
+      getUser: vi.fn(async () => ({ username: 'tester', role: 'admin' })),
       isSignedIn: () => true,
     },
   };

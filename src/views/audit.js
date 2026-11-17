@@ -15,6 +15,7 @@ function eventTime(at) {
 export function auditView() {
   const root = el('div.view');
   const body = el('div');
+  const results = el('div');
   let events = [];
   let query = '';
   let action = '';
@@ -23,11 +24,11 @@ export function auditView() {
 
   const search = el('input.input', {
     type: 'search', placeholder: 'Пользователь, запись или поле…', 'aria-label': 'Поиск по журналу',
-    oninput: (e) => { query = e.target.value; render(); },
+    oninput: (e) => { query = e.target.value; renderResults(); },
   });
   const actionSelect = el('select.select', {
     'aria-label': 'Тип действия',
-    onchange: (e) => { action = e.target.value; render(); },
+    onchange: (e) => { action = e.target.value; renderResults(); },
   },
     el('option', { value: '' }, 'Все действия'),
     ...Object.entries(ACTIONS).map(([value, label]) => el('option', { value }, label))
@@ -64,25 +65,33 @@ export function auditView() {
       }));
       return;
     }
-    const filtered = events.filter((event) => (!action || event.action === action)
-      && fuzzyIncludes(`${event.actor} ${event.name} ${event.kind} ${event.details || ''} ${(event.fields || []).join(' ')}`, query));
     body.append(
       section('Журнал', null,
         el('div.audit-filters', {}, search, el('div.select-wrap', {}, actionSelect)),
-        filtered.length
-          ? el('div.audit-list', {}, filtered.map((event) =>
-              el('article.audit-row', {},
-                el('time.audit-time', { datetime: new Date(event.at).toISOString() }, eventTime(event.at)),
-                el('div.audit-event', {},
-                  el('div.audit-title', {},
-                    el('span.audit-action', { dataset: { action: event.action } }, ACTIONS[event.action] || event.action),
-                    el('span', {}, ` ${event.kind} «${event.name}»`)),
-                  event.fields?.length > 0 && el('div.audit-fields', {}, `Поля: ${event.fields.join(', ')}`),
-                  event.details && el('div.audit-fields', {}, event.details)),
-                el('span.audit-actor', { title: 'Пользователь' }, event.actor)))
-            )
-          : el('p.card-empty', {}, events.length ? 'По этому фильтру событий нет.' : 'Изменений пока не было. Создание и редактирование записей появятся здесь.')
+        results
       )
+    );
+    renderResults();
+  }
+
+  function renderResults() {
+    clear(results);
+    const filtered = events.filter((event) => (!action || event.action === action)
+      && fuzzyIncludes(`${event.actor} ${event.name} ${event.kind} ${event.details || ''} ${(event.fields || []).join(' ')}`, query));
+    results.append(
+      filtered.length
+        ? el('div.audit-list', {}, filtered.map((event) =>
+            el('article.audit-row', {},
+              el('time.audit-time', { datetime: new Date(event.at).toISOString() }, eventTime(event.at)),
+              el('div.audit-event', {},
+                el('div.audit-title', {},
+                  el('span.audit-action', { dataset: { action: event.action } }, ACTIONS[event.action] || event.action),
+                  el('span', {}, ` ${event.kind} «${event.name}»`)),
+                event.fields?.length > 0 && el('div.audit-fields', {}, `Поля: ${event.fields.join(', ')}`),
+                event.details && el('div.audit-fields', {}, event.details)),
+              el('span.audit-actor', { title: 'Пользователь' }, event.actor)))
+          )
+        : el('p.card-empty', {}, events.length ? 'По этому фильтру событий нет.' : 'Изменений пока не было. Создание и редактирование записей появятся здесь.')
     );
   }
 

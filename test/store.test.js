@@ -25,7 +25,7 @@ function installPuterMock() {
       delete: vi.fn(async () => {}),
     },
     auth: {
-      getUser: vi.fn(async () => ({ username: 'tester', uuid: 'u-1' })),
+      getUser: vi.fn(async () => ({ username: 'tester', uuid: 'u-1', role: 'admin' })),
       isSignedIn: () => true,
     },
   };
@@ -97,6 +97,7 @@ describe('read-only role', () => {
   it('refuses mutations before changing optimistic in-memory data', async () => {
     const store = await freshStore();
     store.user = { username: 'guest', role: 'viewer' };
+    puter.kv.set.mockClear(); // initialization may persist the one-time task-model migration
 
     await expect(store.addDeal({ name: 'Should not appear' })).rejects.toThrow('read_only');
     await expect(store.updateSettings({ currency: 'EUR' })).rejects.toThrow('read_only');
@@ -1332,14 +1333,14 @@ describe('the people on a deal', () => {
     const store = await freshStore();
     const c = await store.addContact({ name: 'Solo' });
     const d = await store.addDeal({ name: 'One', contactId: c.id });
-    expect(d.contacts).toEqual([{ contactId: c.id, role: '', influence: '' }]);
+    expect(d.contacts).toEqual([{ contactId: c.id, role: '', influence: '', position: '' }]);
 
     await store.importAll({
       app: 'crm', version: 1, settings: {}, companies: [], activities: [], tasks: [],
       contacts: [{ id: 'c9', name: 'Old' }],
       deals: [{ id: 'd9', name: 'Legacy', stage: 's5', contactId: 'c9' }],
     });
-    expect(store.deals[0].contacts).toEqual([{ contactId: 'c9', role: '', influence: '' }]);
+    expect(store.deals[0].contacts).toEqual([{ contactId: 'c9', role: '', influence: '', position: '' }]);
   });
 
   it('swapping the primary keeps the other people', async () => {
@@ -1377,7 +1378,7 @@ describe('the people on a deal', () => {
     const { store, mei, tom, deal } = await withPeople();
     await store.mergeContacts(mei.id, tom.id);
     const after = store.dealById(deal.id);
-    expect(after.contacts).toEqual([{ contactId: mei.id, role: 'champion', influence: '' }]);
+    expect(after.contacts).toEqual([{ contactId: mei.id, role: 'champion', influence: '', position: '' }]);
     expect(after.contactId).toBe(mei.id);
   });
 

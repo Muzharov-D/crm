@@ -1,4 +1,5 @@
 import { todayISO, formatDate } from './util.js';
+import { isOpenTask } from './deal-workflow.js';
 
 const clean = (value) => String(value || '').trim().toLocaleLowerCase('ru-RU');
 const digits = (value) => String(value || '').replace(/\D/g, '');
@@ -20,7 +21,7 @@ function duplicateGroups(rows, keyOf) {
  * Actionable data-quality findings. A finding always points to records the
  * user can open and fix; there is no opaque "quality score".
  */
-export function dataQuality({ companies = [], contacts = [], deals = [], leads = [], tasks = [], dealSteps = [] }, today = todayISO()) {
+export function dataQuality({ companies = [], contacts = [], deals = [], leads = [], tasks = [] }, today = todayISO()) {
   const companyDuplicates = [
     ...duplicateGroups(companies, (c) => clean(c.inn) && `inn:${clean(c.inn)}`),
     ...duplicateGroups(companies, (c) => clean(c.name) && `name:${clean(c.name)}`),
@@ -30,9 +31,9 @@ export function dataQuality({ companies = [], contacts = [], deals = [], leads =
     ...duplicateGroups(contacts, (c) => digits(c.phone).length >= 10 && `phone:${digits(c.phone).slice(-10)}`),
   ];
   const dealsWithoutNextStep = deals.filter((deal) => openDeal(deal)
-    && !dealSteps.some((step) => step.dealId === deal.id && step.status === 'active'));
+    && !tasks.some((task) => task.dealId === deal.id && task.isNextStep === true && isOpenTask(task)));
   const leadsWithoutOwner = leads.filter((l) => openLead(l) && !l.employeeId);
-  const overdueTasks = tasks.filter((t) => !t.done && t.status !== 'Выполнено' && t.due && t.due < today);
+  const overdueTasks = tasks.filter((task) => isOpenTask(task) && task.due && task.due < today);
   const dealsWithoutCompany = deals.filter((d) => openDeal(d) && !d.companyId);
 
   return {
@@ -49,7 +50,7 @@ export function dataQuality({ companies = [], contacts = [], deals = [], leads =
 export function operationalAlerts(data, settings = {}, today = todayISO()) {
   const quality = dataQuality(data, today);
   const alerts = [];
-  for (const task of quality.overdueTasks) {
+  for (const task of quality.overdueTasks.filter((row) => !row.dealId)) {
     alerts.push({
       id: `task-${task.id}`, tone: 'critical', title: task.title,
       detail: `Просрочено · срок ${formatDate(task.due)}`, hash: '#/followups', at: task.due,
@@ -58,13 +59,13 @@ export function operationalAlerts(data, settings = {}, today = todayISO()) {
   const employeeId = data.currentEmployee?.()?.id || null;
   for (const note of (data.dealNotifications || []).filter((row) => row.active
     && (!employeeId || row.employeeId === employeeId))) {
-    const step = (data.dealSteps || []).find((row) => row.id === note.stepId);
+    const task = (data.tasks || []).find((row) => row.id === (note.taskId || note.stepId) || row.legacyStepId === note.stepId);
     const deal = (data.deals || []).find((row) => row.id === note.dealId);
-    if (!step || !deal) continue;
+    if (!task || !deal) continue;
     alerts.push({
-      id: note.id, notificationId: note.id, tone: 'critical', title: `Просрочен шаг: ${step.action}`,
-      detail: `${deal.name} · ${note.overdueDays} дн. · срок ${formatDate(step.due)}${note.readAt ? ' · прочитано, просрочка актуальна' : ''}`,
-      hash: `#/pipeline?id=${deal.id}`, at: step.due, readAt: note.readAt,
+      id: note.id, notificationId: note.id, tone: 'critical', title: `Просрочена задача: ${task.title}`,
+      detail: `${deal.name} · ${note.overdueDays} дн. · срок ${formatDate(task.due)}${note.readAt ? ' · прочитано, просрочка актуальна' : ''}`,
+      hash: `#/pipeline?id=${deal.id}`, at: task.due, readAt: note.readAt,
     });
   }
   const staleDays = Number(settings.staleDays) > 0 ? Number(settings.staleDays) : 14;

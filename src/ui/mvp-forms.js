@@ -35,26 +35,31 @@ function saveWithFeedback(form, save) {
   });
 }
 
-export function openCompanyForm(company = null, { onSaved = null } = {}) {
+export function openCompanyForm(company = null, { presets = {}, onSaved = null } = {}) {
   if (!ensureWritable()) return;
-  const name = textInput({ value: company?.name || '', required: true, maxlength: 200 });
-  const inn = textInput({ value: company?.inn || '', inputmode: 'numeric', maxlength: 12, pattern: '[0-9]{10}|[0-9]{12}', placeholder: '10 или 12 цифр' });
-  const role = makeSelect(dictOptions('companyRoles', company?.role), company?.role || '');
-  const parent = searchSelect(recordOptions(store.companies.filter((c) => c.id !== company?.id), 'Нет головной структуры'), company?.parentCompanyId || '');
-  const industry = textInput({ value: company?.industry || '', maxlength: 120 });
-  const website = textInput({ value: company?.website || '', maxlength: 200 });
-  const notes = textArea({ value: company?.notes || '' });
+  const data = { ...presets, ...company };
+  const name = textInput({ value: data.name || '', required: true, maxlength: 200 });
+  const inn = textInput({ value: data.inn || '', inputmode: 'numeric', maxlength: 12, pattern: '[0-9]{10}|[0-9]{12}', placeholder: '10 или 12 цифр' });
+  const role = makeSelect(dictOptions('companyRoles', data.role), data.role || '');
+  const parent = searchSelect(recordOptions(store.companies.filter((c) => c.id !== data.id), 'Нет головной структуры'), data.parentCompanyId || '');
+  const industry = textInput({ value: data.industry || '', maxlength: 120 });
+  const website = textInput({ value: data.website || '', maxlength: 200 });
+  const owner = makeSelect(recordOptions(store.activeEmployees([data.employeeId]), 'Не назначен'), data.employeeId || (store.currentEmployee()?.active !== false ? store.currentEmployee()?.id : '') || '');
+  const primaryContact = makeSelect(recordOptions(store.contacts.filter((contact) => contact.companyId === data.id || contact.id === data.primaryContactId), 'Не выбран'), data.primaryContactId || '');
+  const notes = textArea({ value: data.notes || '' });
   const form = el('form.form', {},
     field('Название', name),
     el('div.form-grid', {}, field('ИНН', inn), field('Роль контрагента', role.wrap)),
     field('Головная структура', parent.wrap),
     el('div.form-grid', {}, field('Отрасль', industry), field('Сайт', website)),
+    el('div.form-grid', {}, field('Ответственный', owner.wrap), field('Основной контакт', primaryContact.wrap)),
     field('Комментарий', notes),
     submitRow(company ? 'Сохранить' : 'Добавить контрагента'));
   const modal = openEntityModal(company ? 'Контрагент' : 'Новый контрагент', form, false);
   saveWithFeedback(form, async () => {
     const data = { name: name.value.trim(), inn: inn.value.trim(), role: role.select.value,
-      parentCompanyId: val(parent.select), industry: industry.value.trim(), website: website.value.trim(), notes: notes.value };
+      parentCompanyId: val(parent.select), industry: industry.value.trim(), website: website.value.trim(), notes: notes.value,
+      employeeId: val(owner.select), primaryContactId: val(primaryContact.select) };
     const saved = company ? await store.updateCompany(company.id, data) : await store.addCompany(data);
     modal.close(); onSaved?.(saved); return saved;
   });
@@ -68,14 +73,15 @@ export function openContactForm(contact = null, { presets = {}, onSaved = null, 
   const phone = textInput({ value: data.phone || '', type: 'tel' });
   const email = textInput({ value: data.email || '', type: 'email' });
   const company = searchSelect(recordOptions(store.companies, 'Без контрагента'), data.companyId || '');
+  const owner = makeSelect(recordOptions(store.activeEmployees([data.employeeId]), 'Не назначен'), data.employeeId || (store.currentEmployee()?.active !== false ? store.currentEmployee()?.id : '') || '');
   const notes = textArea({ value: data.notes || '' });
   const form = el('form.form', {}, field('ФИО', name), compact ? null : field('Должность', title),
     el('div.form-grid', {}, field('Телефон', phone), field('Email', email)),
-    field('Контрагент', company.wrap), compact ? null : field('Комментарий', notes), submitRow(contact ? 'Сохранить' : 'Добавить контакт'));
+    field('Контрагент', company.wrap), compact ? null : field('Ответственный', owner.wrap), compact ? null : field('Комментарий', notes), submitRow(contact ? 'Сохранить' : 'Добавить контакт'));
   const modal = openEntityModal(contact ? 'Контакт' : 'Новый контакт', form, false);
   saveWithFeedback(form, async () => {
     const payload = { name: name.value.trim(), title: title.value.trim(), phone: phone.value.trim(),
-      email: email.value.trim(), companyId: val(company.select), notes: notes.value };
+      email: email.value.trim(), companyId: val(company.select), employeeId: val(owner.select), notes: notes.value };
     const saved = contact ? await store.updateContact(contact.id, payload) : await store.addContact(payload);
     modal.close(); onSaved?.(saved); return saved;
   });
@@ -115,7 +121,7 @@ function productFields(record = {}) {
 export function openLeadForm(lead = null, { presets = {}, onSaved = null } = {}) {
   if (!ensureWritable()) return;
   const data = { ...presets, ...lead };
-  const name = textInput({ value: data.name || '', required: true, maxlength: 240 });
+  const name = textInput({ value: data.name || '', maxlength: 240, placeholder: 'Необязательно' });
   const status = makeSelect(dictOptions('leadStatuses', data.status || 'Новый'), data.status || 'Новый');
   if (lead?.status === 'Дисквалифицирован') status.select.disabled = true;
   const stage = makeSelect([
@@ -124,6 +130,7 @@ export function openLeadForm(lead = null, { presets = {}, onSaved = null } = {})
     { value: 'l4', label: 'L4 — Глубоко проработанный лид' }, { value: 'l5', label: 'L5 — Лид-возможность' },
   ], data.stage || 'l0');
   const source = makeSelect(dictOptions('leadSources', data.source), data.source || '');
+  const channel = makeSelect(dictOptions('dealChannels', data.channel), data.channel || '');
   const contact = searchSelect(recordOptions(store.contacts, 'Без контакта'), data.contactId || '');
   const company = searchSelect(recordOptions(store.companies, 'Без контрагента'), data.companyId || '');
   const partner = searchSelect(recordOptions(companiesWithRole('Партнёр-интегратор', [data.partnerId]), 'Без партнёра'), data.partnerId || '');
@@ -132,9 +139,10 @@ export function openLeadForm(lead = null, { presets = {}, onSaved = null } = {})
   const budget = textInput({ value: data.preliminaryBudget || '', type: 'number', min: 0, step: '0.01', inputmode: 'decimal' });
   const reason = makeSelect(dictOptions('leadReasons', data.closeReason), data.closeReason || '');
   const description = textArea({ value: data.description || '', rows: 5 });
-  const form = el('form.form', {}, field('Название лида', name),
+  const form = el('form.form', {}, field('Тема (необязательно)', name),
     el('div.form-grid', {}, field('Статус', status.wrap), field('Стадия', stage.wrap)),
-    el('div.form-grid', {}, field('Источник', source.wrap), field('Ответственный сотрудник', employee.wrap)),
+    el('div.form-grid', {}, field('Источник', source.wrap), field('Канал', channel.wrap)),
+    field('Ответственный сотрудник', employee.wrap),
     el('div.form-grid', {}, field('Контакт', contact.wrap), field('Контрагент', company.wrap)),
     el('div.form-grid', {}, field('Продукт', product.wrap), field('Подпродукт', subproduct.wrap)),
     el('div.form-grid', {}, field('Партнёр', partner.wrap), field('Предварительный бюджет, без НДС', budget)),
@@ -143,7 +151,7 @@ export function openLeadForm(lead = null, { presets = {}, onSaved = null } = {})
   const modal = openEntityModal(lead ? 'Лид' : 'Новый лид', form);
   saveWithFeedback(form, async () => {
     const payload = { name: name.value.trim(), status: status.select.value, stage: stage.select.value,
-      source: source.select.value, contactId: val(contact.select), companyId: val(company.select),
+      source: source.select.value, channel: channel.select.value, contactId: val(contact.select), companyId: val(company.select),
       partnerId: val(partner.select), employeeId: val(employee.select), product: product.select.value,
       subproduct: subproduct.select.value, preliminaryBudget: num(budget), closeReason: reason.select.value,
       description: description.value };
@@ -174,6 +182,9 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
   const probability = makeSelect(dictOptions('probabilityCategories', data.probabilityCategory), data.probabilityCategory || '');
   const amountMode = makeSelect([{ value: 'manual', label: 'Ручная оценка' }, { value: 'payments', label: 'Сумма платежей' }], data.amountMode || 'manual');
   const manualValue = textInput({ value: data.manualValue ?? '', type: 'number', min: 0, step: '0.01', inputmode: 'decimal' });
+  const includeInForecastFY = makeSelect([
+    { value: '', label: 'Не выбрано' }, { value: 'yes', label: 'Да' }, { value: 'no', label: 'Нет' },
+  ], ['yes', 'no'].includes(data.includeInForecastFY) ? data.includeInForecastFY : '');
   const notes = textArea({ value: data.notes || '', rows: 3 });
   const preview = el('p.deal-name-preview', { 'aria-live': 'polite' });
   const automaticName = () => composeDealName({
@@ -201,6 +212,7 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
     el('div.form-grid', {}, field('Источник', source.wrap), field('Канал', channel.wrap)),
     el('div.form-grid', {}, field('Категория вероятности', probability.wrap), field('Партнёр', partner.wrap)),
     el('div.form-grid', {}, field('Способ оценки', amountMode.wrap), field('Ручная оценка, без НДС', manualValue, { hint: 'Пусто и явный ноль — разные значения.' })),
+    field('Включать в прогноз ФГ', includeInForecastFY.wrap),
     preview, field('Комментарий', notes),
     el('p.field-hint', {}, terminal
       ? 'Изменение результата закрытой сделки выполняется в отдельном блоке «Исправить закрытие».'
@@ -221,7 +233,7 @@ export function openDealForm(deal = null, { presets = {}, onSaved = null } = {})
       stage: stage.select.value, status: status.select.value, employeeId: val(owner.select),
       userCount: users.value === '' ? 0 : Math.max(0, Math.floor(Number(users.value) || 0)),
       source: source.select.value, channel: channel.select.value, probabilityCategory: probability.select.value,
-      amountMode: amountMode.select.value,
+      amountMode: amountMode.select.value, includeInForecastFY: includeInForecastFY.select.value,
       manualValue: manualValue.value === '' ? null : Math.max(0, Number(manualValue.value) || 0), notes: notes.value,
     };
     const saved = deal ? await store.updateDeal(deal.id, payload) : await store.addDeal(payload);
@@ -239,18 +251,20 @@ export function openPaymentForm(payment = null, { presets = {}, onSaved = null }
   const amount = textInput({ value: data.amount ?? '', type: 'number', min: 0, step: '0.01', required: true });
   const type = makeSelect(dictOptions('paymentTypes', data.type || 'Лицензия'), data.type || 'Лицензия');
   const status = makeSelect(dictOptions('paymentStatuses', data.status || 'Прогноз'), data.status || 'Прогноз');
+  const probability = makeSelect(dictOptions('probabilityCategories', data.probability), data.probability || '');
   const paymentDate = textInput({ value: data.paymentDate || '', type: 'date' });
   const actDate = textInput({ value: data.actDate || '', type: 'date' });
   const form = el('form.form', {}, field('Сделка', deal.wrap),
     el('div.form-grid', {}, field('Финансовый год', fiscalYear, { hint: 'ФГ27 = апрель 2026 — март 2027.' }), field('Квартал ФГ', quarter.wrap)),
     field('Сумма без НДС', amount),
     el('div.form-grid', {}, field('Тип', type.wrap), field('Статус', status.wrap)),
+    field('Вероятность', probability.wrap),
     el('div.form-grid', {}, field('Дата оплаты', paymentDate), field('Дата акта', actDate)),
     submitRow(payment ? 'Сохранить платёж' : 'Добавить платёж'));
   const modal = openEntityModal(payment ? 'Платёж' : 'Новый платёж', form, false);
   saveWithFeedback(form, async () => {
     const payload = { dealId: val(deal.select), fiscalYear: Number(fiscalYear.value), quarter: quarter.select.value,
-      amount: num(amount), type: type.select.value, status: status.select.value,
+      amount: num(amount), type: type.select.value, status: status.select.value, probability: probability.select.value,
       paymentDate: paymentDate.value, actDate: actDate.value };
     const saved = payment ? await store.updatePayment(payment.id, payload) : await store.addPayment(payload);
     modal.close(); onSaved?.(saved); return saved;

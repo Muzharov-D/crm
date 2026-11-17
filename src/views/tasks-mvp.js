@@ -1,6 +1,6 @@
 import { el, clear, keepingFocus } from '../ui/dom.js';
 import { store } from '../lib/store.js';
-import { canWrite } from '../lib/access.js';
+import { canWrite, canAdmin } from '../lib/access.js';
 import { dictionary } from '../lib/spec.js';
 import { openTaskForm } from '../ui/mvp-forms.js';
 import { pageHead, actionButton, emptyState } from '../ui/mvp-bits.js';
@@ -87,7 +87,7 @@ export function tasksMvpView() {
         el('td', {}, task.title), el('td', {}, store.employeeById(task.employeeId)?.name || '—'), el('td', {}, formatDate(task.startDate)), el('td', {}, formatDate(task.due)),
         el('td', {}, task.status || 'К выполнению'), el('td', {}, linkedHref(task) ? el('a.record-link', { href: linkedHref(task) }, linkedText(task)) : '—'),
         el('td.row-actions', {}, canWrite(store.user) && actionButton('Изменить', () => openTaskForm(task), { iconName: 'pencil' }),
-          canWrite(store.user) && actionButton('Удалить', async () => { if (await confirmDialog({ title: 'Удалить задачу?' })) await store.deleteTask(task.id); }, { iconName: 'trash' }))))
+          canAdmin(store.user) && actionButton('Удалить', async () => { if (await confirmDialog({ title: 'Удалить задачу?' })) await store.deleteTask(task.id); }, { iconName: 'trash' }))))
         : el('tr', {}, el('td', { colspan: columns.length }, 'По фильтрам ничего не найдено')))));
   }
   let tableRefresh = () => render();

@@ -20,7 +20,7 @@ import { reportsView } from '../views/reports.js';
 import { activityView } from '../views/activity.js';
 import { settingsView, confirmSignOut } from '../views/settings.js';
 import { auditView } from '../views/audit.js';
-import { canWrite, roleLabel } from '../lib/access.js';
+import { canAdmin, canWrite, roleLabel } from '../lib/access.js';
 import { openQuickCreate } from './quick-create.js';
 import { openNotifications } from './notifications.js';
 import { blockEnabled, routeEnabled, homeHash, workspaceOf } from '../lib/workspace.js';
@@ -86,7 +86,7 @@ export function mountShell(appRoot) {
     sampleBanner.append(el('div.sample-banner', {},
       el('span.sample-banner-ic', { html: icon('sparkle', 14, 2.2) }),
       el('span.grow', {}, 'Демо-данные: можно смело пробовать, ваших данных здесь нет'),
-      canWrite(store.user) && el('button', {
+      canAdmin(store.user) && el('button', {
         onclick: async () => {
           const ok = await confirmDialog({
             title: 'Начать с чистого листа?',

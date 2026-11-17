@@ -25,6 +25,7 @@ import { attachmentsSection } from '../ui/attachments.js';
 import { exportRecords } from '../lib/csv.js';
 import { exportContext } from '../ui/csv.js';
 import { downloadFile } from '../ui/download.js';
+import { canAdmin } from '../lib/access.js';
 
 export function companiesView({ params }) {
   const id = params.get('id');
@@ -111,7 +112,7 @@ function companiesList(params) {
           toast(`${countLabel(records.length, ['компания', 'компании', 'компаний'])} ${plural(records.length, ['экспортирована', 'экспортированы', 'экспортировано'])}`, { icon: 'fileDown' });
         },
       },
-      {
+      ...(canAdmin(store.user) ? [{
         icon: 'trash', label: 'Удалить', danger: true,
         onClick: async () => {
           if (!await confirmBulkDelete(selection.size, plural(selection.size, ['компанию', 'компании', 'компаний']))) return;
@@ -121,7 +122,7 @@ function companiesList(params) {
             toast(`${countLabel(entries.length, ['компания', 'компании', 'компаний'])} ${plural(entries.length, ['удалена', 'удалены', 'удалено'])}`, { icon: 'trash' });
           } catch { fail(); }
         },
-      },
+      }] : []),
     ];
   }
 
@@ -310,7 +311,7 @@ function companyDetail(id) {
             html: icon('pencil', 15, 2),
             onclick: () => openCompanyForm(company),
           }, ' Изменить'),
-          el('button.icon-btn', {
+          canAdmin(store.user) && el('button.icon-btn', {
             html: icon('trash', 17, 2), 'aria-label': `Удалить «${company.name}»`,
             onclick: async () => {
               const ok = await confirmDialog({

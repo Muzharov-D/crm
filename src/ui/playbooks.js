@@ -12,6 +12,7 @@ import { icon } from './icons.js';
 import { openModal, confirmDialog } from './modal.js';
 import { toast } from './toast.js';
 import { store } from '../lib/store.js';
+import { canAdmin } from '../lib/access.js';
 import { wireForm } from './forms.js';
 import { requiredMark } from './bits.js';
 import { formatDate, todayISO, countLabel, plural } from '../lib/util.js';
@@ -79,7 +80,7 @@ export function openPlaybookForm(playbook = null, { onSaved = null } = {}) {
     const remove = el('button.icon-btn', {
       type: 'button',
       html: icon('x', 16, 2.2),
-      'aria-label': 'Удалить шаг',
+      'aria-label': 'Убрать шаг',
       onclick: () => {
         rows.splice(rows.indexOf(row), 1);
         node.remove();
@@ -146,7 +147,7 @@ export function openPlaybookForm(playbook = null, { onSaved = null } = {}) {
     ),
     preview,
     el('div.form-actions', {},
-      playbook && el('button.btn.btn-ghost.btn-danger-ghost', {
+      playbook && canAdmin(store.user) && el('button.btn.btn-ghost.btn-danger-ghost', {
         type: 'button',
         onclick: async () => {
           const ok = await confirmDialog({
@@ -217,11 +218,11 @@ export function openPlaybookPreview(playbook, { contactId = null, dealId = null,
     const n = created.length;
     toast(`${plural(n, ['Добавлена', 'Добавлено', 'Добавлено'])} ${countLabel(n, ['задача', 'задачи', 'задач'])}`, {
       icon: 'followups',
-      action: {
+      action: canAdmin(store.user) ? {
         label: 'Отменить',
         onClick: () => store.undoAddedTasks(created.map((t) => t.id))
           .catch(() => toast('Не удалось отменить. Проверьте подключение', { icon: 'wifiOff' })),
-      },
+      } : undefined,
     });
   };
 

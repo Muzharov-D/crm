@@ -9,6 +9,7 @@ import { icon } from './icons.js';
 import { openModal } from './modal.js';
 import { toast } from './toast.js';
 import { store } from '../lib/store.js';
+import { canAdmin } from '../lib/access.js';
 import { sampleDataset } from '../lib/sample.js';
 import { openContactForm } from './mvp-forms.js';
 
@@ -60,7 +61,7 @@ export function openOnboarding() {
         type: 'button',
         onclick: renderCurrency,
       }, 'Настроить воронку'),
-      el('button.btn.btn-ghost.btn-block.btn-dashed.mt-sm', {
+      canAdmin(store.user) && el('button.btn.btn-ghost.btn-block.btn-dashed.mt-sm', {
         type: 'button',
         html: icon('sparkle', 15, 2),
         onclick: useSampleData,

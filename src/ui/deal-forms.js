@@ -71,79 +71,31 @@ export function openDealClosureForm(deal, { stage = deal.stage, onSaved = null }
   return modal;
 }
 
-export function openDealEventForm(deal, { complete = false, onSaved = null, presets = {} } = {}) {
+export function openDealEventForm(deal, { onSaved = null, presets = {} } = {}) {
   if (!ensureWritable() || !deal) return;
-  const current = store.activeDealStep(deal.id);
-  const revision = deal.revision;
   const operationId = uid();
   const actor = store.currentEmployee();
-  const type = makeSelect([
-    { value: 'note', label: 'Событие / результат' }, { value: 'meeting', label: 'Встреча' },
-    { value: 'call', label: 'Звонок' }, { value: 'email', label: 'Письмо' },
-  ], presets.type || 'note');
-  const openStages = store.stages().filter((stage) => !isFinalStage(stage.id) || stage.id === deal.stage);
-  const stage = makeSelect(openStages.map((row) => ({ value: row.id, label: row.label })), presets.stage || deal.stage);
-  const summary = textArea({ value: presets.summary || '', required: true, rows: 4, maxlength: 2000, placeholder: 'Что произошло и какой результат получен?' });
-  const terminal = isFinalStage(deal.stage);
-  const actionChoices = terminal ? (current ? [
-    { value: 'complete', label: 'Выполнить текущий шаг' },
-    { value: 'cancel', label: 'Отменить текущий шаг с указанием причины' },
-  ] : [{ value: 'keep', label: 'Только добавить событие в хронологию' }]) : current ? [
-    { value: 'keep', label: 'Оставить текущий шаг без изменений' },
-    { value: 'complete-next', label: 'Выполнить текущий и назначить следующий' },
-    { value: 'change', label: 'Изменить текущий шаг' },
-    { value: 'cancel-replace', label: 'Отменить и заменить с указанием причины' },
-  ] : [{ value: 'create', label: 'Создать следующий шаг' }];
-  const stepAction = makeSelect(actionChoices, complete && current ? (terminal ? 'complete' : 'complete-next') : actionChoices[0].value);
-  const nextAction = textInput({ value: current?.action || '', maxlength: 500, placeholder: 'Конкретное следующее действие' });
-  const nextDue = textInput({ type: 'date', value: current?.due || todayISO() });
-  const assignee = makeSelect(options(store.activeEmployees([current?.employeeId, actor?.id]), 'Выберите активного сотрудника'), current?.employeeId || actor?.id || '');
-  const changeReason = textArea({ rows: 2, placeholder: 'Причина отмены или изменения действия, срока, ответственного' });
-  const nextFields = el('div.deal-event-next-fields', {},
-    field('Действие следующего шага', nextAction), el('div.form-grid', {}, field('Срок', nextDue), field('Ответственный', assignee.wrap)));
-  const reasonField = field('Причина изменения', changeReason);
-  const currentBlock = current ? el('div.deal-current-step', {},
-    el('strong', {}, current.action), el('span', {}, `${employeeName(current.employeeId)} · срок ${formatDate(current.due)}${current.overdueDays ? ` · просрочка ${current.overdueDays} дн.` : ''}`))
-    : el('div.notice.warning', {}, terminal ? 'Активного следующего шага нет. Событие будет добавлено в хронологию закрытой сделки.' : 'Активного следующего шага нет. Для активной сделки создайте его при сохранении события.');
+  const summary = textArea({ value: presets.summary || '', required: true, rows: 5, maxlength: 4000, placeholder: 'Что произошло?' });
   const error = el('p.form-error', { role: 'alert', hidden: true });
   const form = el('form.form.deal-event-form', {},
     el('div.deal-event-automatic', {}, el('span', {}, `Автор: ${actor?.name || store.user?.username || 'Текущая учётная запись'}`),
-      el('span', {}, 'Дата и время события фиксируются автоматически')),
-    currentBlock,
-    el('div.form-grid', {}, field('Тип события', type.wrap), field('Стадия сделки', stage.wrap)),
-    field('Текущее событие / результат', summary),
-    field('Действие со следующим шагом', stepAction.wrap), nextFields, reasonField, error,
+      el('span', {}, `Стадия: ${stageName(deal.stage)} · дата и время фиксируются автоматически`)),
+    field('Что произошло?', summary), error,
     el('div.form-actions', {}, el('button.btn.btn-ghost', { type: 'button', onclick: () => modal.close() }, 'Отмена'),
-      el('div.grow'), el('button.btn.btn-primary', { type: 'submit' }, 'Сохранить событие')));
-  const modal = openModal({ title: complete ? 'Выполнить / внести результат' : 'Новое событие сделки', content: form, wide: true });
-  const sync = () => {
-    const action = stepAction.select.value;
-    nextFields.hidden = ['keep', 'complete', 'cancel'].includes(action);
-    reasonField.hidden = !['change', 'cancel-replace', 'cancel'].includes(action);
-    nextAction.required = ['complete-next', 'cancel-replace', 'create'].includes(action);
-    nextDue.required = nextAction.required;
-    assignee.select.required = ['complete-next', 'cancel-replace', 'create', 'change'].includes(action);
-    changeReason.required = ['change', 'cancel-replace', 'cancel'].includes(action);
-  };
-  stepAction.select.addEventListener('change', sync); sync();
+      el('div.grow'), el('button.btn.btn-primary', { type: 'submit' }, 'Добавить запись')));
+  const modal = openModal({ title: 'Новая запись в хронологии', content: form, wide: false });
   form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    error.hidden = true;
+    event.preventDefault(); error.hidden = true;
     if (!form.reportValidity()) return;
-    const button = form.querySelector('button[type="submit"]');
-    button.disabled = true;
+    const button = form.querySelector('button[type="submit"]'); button.disabled = true;
     try {
-      const saved = await store.saveDealEvent(deal.id, {
-        type: type.select.value, stage: stage.select.value, summary: summary.value.trim(), stepAction: stepAction.select.value,
-        changeReason: changeReason.value.trim(),
-        nextStep: { action: nextAction.value.trim(), due: nextDue.value, employeeId: assignee.select.value || actor?.id || null },
-      }, { expectedRevision: revision, operationId });
-      toast('Событие и следующий шаг сохранены', { icon: 'check' });
-      modal.close(); onSaved?.(saved);
+      const saved = await store.addDealRecord(deal.id, { summary: summary.value.trim(), type: presets.type || 'note' }, {
+        expectedRevision: deal.revision, operationId,
+      });
+      toast('Запись добавлена', { icon: 'check' }); modal.close(); onSaved?.(saved);
     } catch (err) {
-      error.textContent = err.message || 'Не удалось сохранить операцию. Изменения не применены.';
-      error.hidden = false;
-      button.disabled = false;
+      error.textContent = err.message || 'Не удалось сохранить запись. Текст остался в поле.';
+      error.hidden = false; button.disabled = false;
     }
   });
   return modal;

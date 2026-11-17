@@ -30,15 +30,12 @@ async function setup() {
   return { store, author, assignee, deal };
 }
 
-async function createStep(store, deal, assignee, data = {}) {
-  return store.saveDealEvent(deal.id, {
-    summary: 'Событие / результат',
-    stepAction: 'create',
-    nextStep: {
-      action: 'Связаться с клиентом', due: addDays(todayISO(), 1),
-      employeeId: assignee.id, ...data,
-    },
-  }, { expectedRevision: deal.revision, operationId: data.operationId || 'create-step' });
+async function createTask(store, deal, assignee, data = {}) {
+  const { operationId = `create-task-${Math.random()}`, ...fields } = data;
+  return store.addDealTask(deal.id, {
+    title: 'Связаться с клиентом', due: addDays(todayISO(), 1),
+    employeeId: assignee.id, ...fields,
+  }, { expectedRevision: store.dealById(deal.id).revision, operationId });
 }
 
 describe('deal amount and closure invariants', () => {
@@ -101,101 +98,163 @@ describe('deal amount and closure invariants', () => {
   });
 });
 
-describe('atomic deal events and next steps', () => {
-  it('separates the immutable event author from the step assignee', async () => {
+describe('independent deal tasks and simple timeline records', () => {
+  it('creates a marked task with an automatic record and separate author/assignee', async () => {
     const { store, author, assignee, deal } = await setup();
-    const activity = await createStep(store, deal, assignee);
-    const step = store.activeDealStep(deal.id);
-    expect(activity).toMatchObject({ employeeId: author.id, appendOnly: true, newStepId: step.id });
-    expect(step).toMatchObject({
-      status: 'active', employeeId: assignee.id, createdBy: author.id,
-      originalDue: step.due, action: 'Связаться с клиентом',
+    const task = await createTask(store, deal, assignee, { operationId: 'create-main' });
+    expect(store.activeDealTask(deal.id)).toMatchObject({
+      id: task.id, isNextStep: true, employeeId: assignee.id,
+      title: 'Связаться с клиентом', createdBy: author.id,
     });
-    expect(store.dealStepsFor(deal.id).filter((row) => row.status === 'active')).toHaveLength(1);
+    const activity = store.activities.find((row) => row.operationId === 'create-main');
+    expect(activity).toMatchObject({
+      employeeId: author.id, appendOnly: true, taskId: task.id, taskOperation: 'create',
+      summary: 'Создана задача: Связаться с клиентом', stage: 's2',
+    });
   });
 
-  it('recovers an idempotent retry and rejects a stale revision', async () => {
+  it('adds simple records idempotently without changing stage or tasks', async () => {
     const { store, assignee, deal } = await setup();
-    const first = await createStep(store, deal, assignee, { operationId: 'same-operation' });
-    const retry = await store.saveDealEvent(deal.id, {
-      summary: 'Повторный запрос', stepAction: 'create',
-    }, { expectedRevision: 1, operationId: 'same-operation' });
+    const task = await createTask(store, deal, assignee);
+    const before = { stage: store.dealById(deal.id).stage, revision: task.revision, tasks: store.tasks.length };
+    const first = await store.addDealRecord(deal.id, { summary: 'Провели демо' }, {
+      expectedRevision: store.dealById(deal.id).revision, operationId: 'record-same',
+    });
+    const retry = await store.addDealRecord(deal.id, { summary: 'Повтор' }, { expectedRevision: 1, operationId: 'record-same' });
     expect(retry.id).toBe(first.id);
-    expect(store.activities.filter((row) => row.dealId === deal.id)).toHaveLength(1);
-    expect(store.dealStepsFor(deal.id)).toHaveLength(1);
-
-    await expect(store.saveDealEvent(deal.id, {
-      summary: 'Конфликт', stepAction: 'keep',
-    }, { expectedRevision: 1, operationId: 'stale-operation' })).rejects.toMatchObject({ code: 'STALE_DEAL' });
-    expect(store.activities.filter((row) => row.dealId === deal.id)).toHaveLength(1);
+    expect(store.activities.filter((row) => row.operationId === 'record-same')).toHaveLength(1);
+    expect(store.dealById(deal.id).stage).toBe(before.stage);
+    expect(store.tasks.find((row) => row.id === task.id).revision).toBe(before.revision);
+    expect(store.tasks).toHaveLength(before.tasks);
+    await expect(store.addDealRecord(deal.id, { summary: 'Конфликт' }, {
+      expectedRevision: 1, operationId: 'record-stale',
+    })).rejects.toMatchObject({ code: 'STALE_DEAL' });
   });
 
-  it('requires an active assignee and reasons for changes', async () => {
+  it('validates assignee and edits inline without a mandatory reason or timeline entry', async () => {
     const { store, assignee, deal } = await setup();
-    await expect(createStep(store, deal, { id: 'missing' })).rejects.toThrow('активного ответственного');
-    await createStep(store, deal, assignee);
-    const step = store.activeDealStep(deal.id);
-    await expect(store.saveDealEvent(deal.id, {
-      summary: 'Перенос', stepAction: 'change',
-      nextStep: { due: addDays(todayISO(), 3) },
-    }, { expectedRevision: store.dealById(deal.id).revision })).rejects.toThrow('причину');
-
-    await store.saveDealEvent(deal.id, {
-      summary: 'Перенос согласован', stepAction: 'change', changeReason: 'Просьба клиента',
-      nextStep: { due: addDays(todayISO(), 3), employeeId: assignee.id },
-    }, { expectedRevision: store.dealById(deal.id).revision });
-    const changed = store.activeDealStep(deal.id);
-    expect(changed.id).toBe(step.id);
-    expect(changed.originalDue).toBe(step.originalDue);
-    expect(changed.due).not.toBe(step.due);
-    expect(changed.changes.at(-1)).toMatchObject({ field: 'due', reason: 'Просьба клиента' });
+    await expect(createTask(store, deal, { id: 'missing' })).rejects.toThrow('активного ответственного');
+    const task = await createTask(store, deal, assignee);
+    const activities = store.activities.length;
+    const originalDue = store.tasks.find((row) => row.id === task.id).due;
+    const newDue = addDays(todayISO(), 3);
+    await store.updateDealTask(task.id, { title: 'Уточнённое действие', due: newDue });
+    const changed = store.tasks.find((row) => row.id === task.id);
+    expect(changed).toMatchObject({ title: 'Уточнённое действие', due: newDue, originalDue });
+    expect(changed.changes.at(-1)).toMatchObject({ field: 'due', reason: '' });
+    expect(store.dealFieldHistoryFor(deal.id).some((row) => row.taskId === task.id && row.field === 'task.due')).toBe(true);
+    expect(store.activities).toHaveLength(activities);
   });
 
-  it('closes and replaces steps atomically, and closes a terminal step without a replacement', async () => {
+  it('keeps multiple open tasks, transfers one marker and never auto-assigns after completion', async () => {
     const { store, assignee, deal } = await setup();
-    await createStep(store, deal, assignee);
-    const first = store.activeDealStep(deal.id);
-    await store.saveDealEvent(deal.id, {
-      summary: 'Шаг выполнен', stepAction: 'complete-next',
-      nextStep: { action: 'Подписать договор', due: addDays(todayISO(), 2), employeeId: assignee.id },
-    }, { expectedRevision: store.dealById(deal.id).revision });
-    expect(store.dealStepsFor(deal.id).find((row) => row.id === first.id)).toMatchObject({ status: 'completed', closedBy: expect.any(String) });
-    const second = store.activeDealStep(deal.id);
-    expect(second.id).not.toBe(first.id);
-    expect(store.dealStepsFor(deal.id).filter((row) => row.status === 'active')).toHaveLength(1);
+    const first = await createTask(store, deal, assignee);
+    const second = await createTask(store, deal, assignee, { title: 'Подготовить демо' });
+    expect(first.isNextStep).toBe(true);
+    expect(second.isNextStep).toBe(false);
+    expect(store.dealFieldHistoryFor(deal.id).some((row) => row.taskId === second.id
+      && row.field === 'task.isNextStep' && row.previousDisplay === row.newDisplay)).toBe(false);
+    await store.setDealNextStep(second.id, { expectedRevision: store.dealById(deal.id).revision });
+    expect(store.activeDealTask(deal.id).id).toBe(second.id);
+    expect(store.tasks.find((row) => row.id === first.id)).toMatchObject({ isNextStep: false, done: false });
+    await store.completeDealTask(second.id, { expectedRevision: store.dealById(deal.id).revision });
+    expect(store.activeDealTask(deal.id)).toBeNull();
+    expect(store.tasks.find((row) => row.id === first.id).done).toBe(false);
+    const third = await createTask(store, deal, assignee, { title: 'Дополнительная проверка' });
+    expect(third.isNextStep).toBe(false);
+  });
 
+  it('cancels only the selected task and leaves tasks unchanged on stage close', async () => {
+    const { store, assignee, deal } = await setup();
+    const first = await createTask(store, deal, assignee);
+    const second = await createTask(store, deal, assignee, { title: 'Presale' });
     await store.updateDeal(deal.id, { stage: 'won' });
-    await store.saveDealEvent(deal.id, {
-      summary: 'Завершающее событие', stepAction: 'complete',
-    }, { expectedRevision: store.dealById(deal.id).revision });
-    expect(store.dealStepsFor(deal.id).find((row) => row.id === second.id).status).toBe('completed');
-    expect(store.activeDealStep(deal.id)).toBeNull();
+    expect(store.tasks.find((row) => row.id === first.id).done).toBe(false);
+    expect(store.tasks.find((row) => row.id === second.id).done).toBe(false);
+    await store.cancelDealTask(second.id);
+    expect(store.tasks.find((row) => row.id === second.id).status).toBe('Отменена');
+    expect(store.tasks.find((row) => row.id === first.id).status).toBe('К выполнению');
+    await store.addDealRecord(deal.id, { summary: 'Запись после закрытия' });
+    expect(store.activeDealTask(deal.id).id).toBe(first.id);
   });
 
-  it('keeps one current overdue notification after reading and recalculation', async () => {
+  it('writes exactly one automatic record for create, complete and cancel', async () => {
     const { store, assignee, deal } = await setup();
-    await createStep(store, deal, assignee, { due: addDays(todayISO(), -1), operationId: 'overdue-create' });
-    const step = store.activeDealStep(deal.id);
-    expect(step.overdueDays).toBe(1);
+    const first = await createTask(store, deal, assignee);
+    const second = await createTask(store, deal, assignee, { title: 'Отменяемая задача' });
+    await store.completeDealTask(first.id);
+    await store.cancelDealTask(second.id);
+    const automatic = store.activities.filter((row) => [first.id, second.id].includes(row.taskId));
+    expect(automatic).toHaveLength(4);
+    expect(automatic.map((row) => row.taskOperation).sort()).toEqual(['cancel', 'complete', 'create', 'create']);
+    expect(automatic.some((row) => row.summary === 'Выполнена задача: Связаться с клиентом')).toBe(true);
+    expect(automatic.some((row) => row.summary === 'Отменена задача: Отменяемая задача')).toBe(true);
+  });
+
+  it('tracks overdue independently for every open task and responsible employee', async () => {
+    const { store, assignee, deal } = await setup();
+    const first = await createTask(store, deal, assignee, { due: addDays(todayISO(), -2) });
+    const second = await createTask(store, deal, assignee, { title: 'Просрочка presale', due: addDays(todayISO(), -1) });
+    expect(store.dealNotificationsFor(assignee.id)).toHaveLength(2);
+    await store.completeDealTask(first.id);
+    expect(store.dealNotifications.filter((row) => row.taskId === first.id)[0].active).toBe(false);
     expect(store.dealNotificationsFor(assignee.id)).toHaveLength(1);
     const note = store.dealNotificationsFor(assignee.id)[0];
+    expect(note.taskId).toBe(second.id);
     await store.markDealNotificationRead(note.id);
-    expect(store.dealNotificationsFor(assignee.id)[0]).toMatchObject({ active: true, readAt: expect.any(Number) });
     await store.recalculateOverdue(new Date(`${addDays(todayISO(), 2)}T12:00:00Z`));
-    expect(store.dealNotifications.filter((row) => row.stepId === step.id)).toHaveLength(1);
-    expect(store.dealNotificationsFor(assignee.id)[0].overdueDays).toBeGreaterThan(1);
+    const reread = store.dealNotificationsFor(assignee.id)[0];
+    expect(reread).toMatchObject({ taskId: second.id, active: true, readAt: expect.any(Number) });
+    expect(reread.overdueDays).toBeGreaterThan(1);
   });
 
-  it('restores working step collections while preserving the audit journals on delete', async () => {
+  it('migrates an existing active step into its matching task without a duplicate', async () => {
+    const employee = { id: 'e1', name: 'Менеджер', username: 'tester', active: true };
+    kvData.set('crm:employees:v1', JSON.stringify([employee]));
+    kvData.set('crm:deals:v1', JSON.stringify([{ id: 'd1', name: 'Старая сделка', stage: 's2', revision: 1 }]));
+    kvData.set('crm:tasks:v1', JSON.stringify([{ id: 'task-1', dealId: 'd1', title: 'Позвонить', due: '2026-11-18', employeeId: 'e1' }]));
+    kvData.set('crm:deal-steps:v1', JSON.stringify([
+      { id: 'step-active', dealId: 'd1', action: 'Позвонить', due: '2026-11-18', employeeId: 'e1', status: 'active', originalDue: '2026-11-17', changes: [{ field: 'due' }] },
+      { id: 'step-closed', dealId: 'd1', action: 'Старая история', due: '2026-11-01', employeeId: 'e1', status: 'completed', closedAt: 1 },
+    ]));
+    kvData.set('crm:deal-notifications:v1', JSON.stringify([{ id: 'note-1', stepId: 'step-active', dealId: 'd1', employeeId: 'e1', active: true }]));
+    const store = new Store(); await store.init();
+    expect(store.tasks.filter((row) => row.dealId === 'd1' && row.title === 'Позвонить')).toHaveLength(1);
+    expect(store.activeDealTask('d1')).toMatchObject({ id: 'task-1', legacyStepId: 'step-active', originalDue: '2026-11-17' });
+    expect(store.tasks.find((row) => row.id === 'step-closed').status).toBe('Выполнено');
+    expect(store.dealNotifications[0]).toMatchObject({ taskId: 'task-1', stepId: 'task-1' });
+    expect(store.dealSteps).toEqual([]);
+  });
+
+  it('restores task links and next marker while preserving audit journals', async () => {
     const { store, assignee, deal } = await setup();
-    await createStep(store, deal, assignee);
+    const task = await createTask(store, deal, assignee);
     const history = store.dealStageHistoryFor(deal.id);
     const entry = await store.deleteDeal(deal.id);
-    expect(store.dealStepsFor(deal.id)).toEqual([]);
+    expect(store.activeDealTask(deal.id)).toBeNull();
     expect(store.dealStageHistoryFor(deal.id)).toEqual(history);
     await store.restoreTrash(entry.id);
-    expect(store.dealStepsFor(deal.id).filter((row) => row.status === 'active')).toHaveLength(1);
+    expect(store.activeDealTask(deal.id).id).toBe(task.id);
     expect(store.dealStageHistoryFor(deal.id)).toEqual(history);
+  });
+
+  it('rolls back a failed atomic task save and rejects a stale marker transfer', async () => {
+    const { store, assignee, deal } = await setup();
+    const first = await createTask(store, deal, assignee);
+    const second = await createTask(store, deal, assignee);
+    const staleRevision = store.dealById(deal.id).revision;
+    await store.setDealNextStep(second.id, { expectedRevision: staleRevision });
+    await expect(store.setDealNextStep(first.id, { expectedRevision: staleRevision })).rejects.toMatchObject({ code: 'STALE_DEAL' });
+    expect(store.activeDealTask(deal.id).id).toBe(second.id);
+
+    puter.crm = { transaction: vi.fn(async () => { throw new Error('write failed'); }) };
+    const beforeTasks = store.tasks.length;
+    const beforeActivities = store.activities.length;
+    await expect(store.addDealTask(deal.id, { title: 'Не сохранится', due: todayISO(), employeeId: assignee.id }, {
+      expectedRevision: store.dealById(deal.id).revision, operationId: 'failed-task',
+    })).rejects.toThrow('write failed');
+    expect(store.tasks).toHaveLength(beforeTasks);
+    expect(store.activities).toHaveLength(beforeActivities);
   });
 });
 

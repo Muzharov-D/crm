@@ -12,6 +12,7 @@ import { icon } from './icons.js';
 import { openModal, confirmDialog } from './modal.js';
 import { toast } from './toast.js';
 import { store } from '../lib/store.js';
+import { canAdmin } from '../lib/access.js';
 import { plural } from '../lib/util.js';
 import { CONTACT_STATUSES } from '../lib/statuses.js';
 import { CLOSE_WINDOWS } from '../lib/forecast.js';
@@ -236,7 +237,7 @@ function openViewMenu({ kind, view, onChanged }) {
           () => write(reorderViews(views, view.id, -1))),
         at < views.length - 1 && row('chevD', 'Переместить ниже', null,
           () => write(reorderViews(views, view.id, 1))),
-        row('trash', 'Удалить фильтр', 'Отфильтрованные данные не изменятся', async () => {
+        canAdmin(store.user) && row('trash', 'Удалить фильтр', 'Отфильтрованные данные не изменятся', async () => {
           const ok = await confirmDialog({
             title: `Удалить «${view.name}»?`,
             message: 'Удалится только набор условий. Данные, которые он находил, не изменятся.',

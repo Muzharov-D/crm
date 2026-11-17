@@ -295,7 +295,7 @@ describe('deal card editing and mixed sales teams', () => {
     await expectTouch(() => store.deletePayment(payment.id));
     await expectTouch(() => store.setSalesTeam(deal.id, [{ employeeId: employee.id }]));
     let task;
-    await expectTouch(async () => { task = await store.addTask({ title: 'Следующий шаг', dealId: deal.id }); });
+    await expectTouch(async () => { task = await store.addTask({ title: 'Следующий шаг', dealId: deal.id, employeeId: employee.id }); });
     await expectTouch(() => store.updateTask(task.id, { title: 'Уточнённый шаг' }));
     await expectTouch(() => store.toggleTask(task.id, true));
     await expectTouch(() => store.deleteTask(task.id));
@@ -321,5 +321,149 @@ describe('deal card editing and mixed sales teams', () => {
     await store.restoreTrash(entry.id);
     expect(store.salesTeamFor(deal.id)).toHaveLength(1);
     expect(store.salesTeamFor(deal.id)[0].contactId).toBe(contact.id);
+  });
+});
+
+
+describe('November 2026 entity-card regressions', () => {
+  it('assigns the signed-in employee to every newly created primary entity', async () => {
+    const store = await freshStore();
+    const employee = await store.addEmployee({ name: 'Текущий пользователь', username: 'tester' });
+    const company = await store.addCompany({ name: 'Клиент' });
+    const contact = await store.addContact({ name: 'Контакт' });
+    const lead = await store.addLead({ name: 'Лид' });
+    const deal = await store.addDeal({ name: 'Сделка' });
+    const task = await store.addTask({ title: 'Задача' });
+    const activity = await store.addActivity({ summary: 'Событие', date: '2026-01-10' });
+    for (const record of [company, contact, lead, deal, task, activity]) {
+      expect(record.employeeId).toBe(employee.id);
+    }
+  });
+
+  it('normalizes forecast inclusion, payment probability and participant position', async () => {
+    const store = await freshStore();
+    const contact = await store.addContact({ name: 'ЛПР' });
+    const deal = await store.addDeal({
+      name: 'Сделка', includeInForecastFY: 'yes',
+      contacts: [{ contactId: contact.id, role: 'decision', influence: 'high', position: 'Финансовый директор' }],
+    });
+    expect(deal.includeInForecastFY).toBe('yes');
+    expect(deal.contacts[0]).toMatchObject({ position: 'Финансовый директор' });
+    await store.updateDeal(deal.id, { includeInForecastFY: 'no' });
+    expect(store.dealById(deal.id).includeInForecastFY).toBe('no');
+    await store.updateDeal(deal.id, { includeInForecastFY: 'invalid' });
+    expect(store.dealById(deal.id).includeInForecastFY).toBe('');
+
+    const payment = await store.addPayment({ dealId: deal.id, amount: 1000, probability: 'Высокая' });
+    expect(payment.probability).toBe('Высокая');
+    await store.updatePayment(payment.id, { probability: 'Средняя' });
+    expect(store.payments.find((row) => row.id === payment.id).probability).toBe('Средняя');
+    await store.updatePayment(payment.id, { probability: 'unknown' });
+    expect(store.payments.find((row) => row.id === payment.id).probability).toBe('');
+  });
+
+  it('keeps separate field journals with actor and readable values', async () => {
+    const store = await freshStore();
+    const employee = await store.addEmployee({ name: 'Текущий пользователь', username: 'tester' });
+    const secondEmployee = await store.addEmployee({ name: 'Второй сотрудник' });
+    const company = await store.addCompany({ name: 'Старое название' });
+    const contact = await store.addContact({ name: 'Старый контакт' });
+    const lead = await store.addLead({ name: 'Лид', stage: 'l0', phone: '+7 900 000-00-00' });
+
+    await store.updateCompany(company.id, { name: 'Новое название', employeeId: secondEmployee.id });
+    await store.updateContact(contact.id, { title: 'Директор', employeeId: secondEmployee.id });
+    await store.updateLead(lead.id, { stage: 'l2', phone: '+7 900 111-11-11' });
+
+    expect(store.entityFieldHistoryFor('company', company.id).map((row) => row.field))
+      .toEqual(expect.arrayContaining(['name', 'employeeId']));
+    expect(store.entityFieldHistoryFor('contact', contact.id)[0]).toMatchObject({
+      entityType: 'contact', entityId: contact.id, actorId: employee.id, actorName: employee.name,
+    });
+    const leadRows = store.entityFieldHistoryFor('lead', lead.id);
+    expect(leadRows.map((row) => row.field)).toEqual(expect.arrayContaining(['stage', 'phone']));
+    expect(leadRows.every((row) => row.actorId === employee.id)).toBe(true);
+    expect(store.leadStageHistoryFor(lead.id).at(-1)).toMatchObject({
+      previousStage: 'l0', newStage: 'l2', actorId: employee.id, actorName: employee.name,
+    });
+    expect(store.dealFieldHistoryFor(lead.id)).toEqual([]);
+  });
+
+  it('rejects clearing required inline names', async () => {
+    const store = await freshStore();
+    const company = await store.addCompany({ name: 'Клиент' });
+    const contact = await store.addContact({ name: 'Контакт' });
+    await expect(store.updateCompany(company.id, { name: '  ' })).rejects.toThrow('название контрагента');
+    await expect(store.updateContact(contact.id, { name: '' })).rejects.toThrow('ФИО контакта');
+    expect(store.companyById(company.id).name).toBe('Клиент');
+    expect(store.contactById(contact.id).name).toBe('Контакт');
+  });
+});
+
+describe('administrator-only destructive store operations', () => {
+  it('blocks direct, bulk, merge, undo and trash deletion for managers', async () => {
+    const store = await freshStore();
+    const employee = await store.addEmployee({ name: 'Сотрудник' });
+    const company = await store.addCompany({ name: 'Клиент' });
+    const companyDupe = await store.addCompany({ name: 'Дубль клиента' });
+    const contact = await store.addContact({ name: 'Контакт' });
+    const contactDupe = await store.addContact({ name: 'Дубль контакта' });
+    const lead = await store.addLead({ name: 'Лид' });
+    const deal = await store.addDeal({ name: 'Сделка' });
+    const payment = await store.addPayment({ dealId: deal.id, amount: 100 });
+    const task = await store.addTask({ title: 'Задача', employeeId: employee.id });
+    const activity = await store.addActivity({ summary: 'Событие', date: '2026-01-10' });
+    const template = await store.addTemplate({ name: 'Шаблон', subject: 'Тема', body: 'Текст' });
+    store.user = { ...store.user, role: 'manager' };
+
+    const removals = [
+      () => store.deleteCompany(company.id),
+      () => store.deleteContact(contact.id),
+      () => store.deleteEmployee(employee.id),
+      () => store.deleteLead(lead.id),
+      () => store.deleteDeal(deal.id),
+      () => store.deletePayment(payment.id),
+      () => store.deleteActivity(activity.id),
+      () => store.deleteTask(task.id),
+      () => store.deleteTemplate(template.id),
+      () => store.bulkDelete('companies', [companyDupe.id]),
+      () => store.mergeContacts(contact.id, contactDupe.id),
+      () => store.mergeCompanies(company.id, companyDupe.id),
+      () => store.undoAddedTasks([task.id]),
+      () => store.emptyTrash(),
+      () => store.importAll(store.exportAll()),
+    ];
+    for (const remove of removals) {
+      await expect(remove()).rejects.toThrow('только администратору');
+    }
+    expect(store.companies).toHaveLength(2);
+    expect(store.contacts).toHaveLength(2);
+    expect(store.deals).toHaveLength(1);
+    expect(store.tasks).toHaveLength(1);
+  });
+
+  it('blocks snapshot restore for managers and all writes for viewers', async () => {
+    const store = await freshStore();
+    await store.addCompany({ name: 'Клиент' });
+    await store.saveSnapshot('test');
+    store.user = { ...store.user, role: 'manager' };
+    await expect(store.restoreBackup()).rejects.toThrow('только администратору');
+    store.user = { ...store.user, role: 'viewer' };
+    await expect(store.addContact({ name: 'Запрещено' })).rejects.toThrow('read_only');
+    await expect(store.deleteCompany(store.companies[0].id)).rejects.toThrow('read_only');
+  });
+
+  it('lets managers edit configuration but reserves removals for administrators', async () => {
+    const store = await freshStore();
+    store.user = { ...store.user, role: 'manager' };
+    await store.setPlaybooks([{ id: 'new', name: 'Сценарий', steps: [{ title: 'Шаг', offset: 0 }] }]);
+    await expect(store.setPlaybooks([])).rejects.toThrow('только администратору');
+    const key = 'products';
+    const before = store.settings.dictionaries[key];
+    await store.updateDictionary(key, [...before, 'Новый продукт']);
+    await expect(store.updateDictionary(key, before)).rejects.toThrow('только администратору');
+    const view = { id: 'v1', name: 'Мой фильтр', filters: { status: 'cold' } };
+    await store.setViews('contacts', [view]);
+    await expect(store.setViews('contacts', [])).rejects.toThrow('только администратору');
+    expect(store.views('contacts')).toHaveLength(1);
   });
 });

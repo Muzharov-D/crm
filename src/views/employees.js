@@ -1,6 +1,6 @@
 import { el, clear, keepingFocus } from '../ui/dom.js';
 import { store } from '../lib/store.js';
-import { canWrite } from '../lib/access.js';
+import { canWrite, canAdmin } from '../lib/access.js';
 import { openEmployeeForm } from '../ui/mvp-forms.js';
 import { pageHead, actionButton, emptyState, facts, relatedRecords, avandokEmpty } from '../ui/mvp-bits.js';
 import { exportXlsx } from '../lib/xlsx.js';
@@ -36,7 +36,7 @@ export function employeesView({ params, navigate }) {
         teams.length ? el('div.link-list', {}, teams.map((r) => { const d = store.dealById(r.dealId); return d && el('a.person-row', { href: `#/pipeline?id=${d.id}` },
           el('span.grow', {}, d.name), el('span.muted', {}, `${r.role || 'Роль не указана'}${r.primary ? ' · Основной' : ''}`)); })) : el('p.muted', {}, 'Нет сделок в команде продаж.')),
       relatedRecords('employee', id), avandokEmpty(),
-      canWrite(store.user) && el('div.danger-zone', {}, actionButton('Удалить сотрудника', async () => {
+      canAdmin(store.user) && el('div.danger-zone', {}, actionButton('Удалить сотрудника', async () => {
         if (!await confirmDialog({ title: 'Удалить сотрудника?', message: 'Связи в записях будут сняты, сами записи сохранятся.' })) return;
         await store.deleteEmployee(id); navigate('#/employees');
       }, { iconName: 'trash' })));

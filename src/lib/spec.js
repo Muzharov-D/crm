@@ -143,6 +143,7 @@ export function normalizePayment(raw = {}) {
     quarter: ['Q1', 'Q2', 'Q3', 'Q4'].includes(raw.quarter) ? raw.quarter : current.quarter,
     amount: Number.isFinite(Number(raw.amount)) ? Math.max(0, Number(raw.amount)) : 0,
     type: clean(raw.type) || 'Лицензия', status: clean(raw.status) || 'Прогноз',
+    probability: ['Высокая', 'Средняя', 'Низкая'].includes(raw.probability) ? raw.probability : '',
     paymentDate: /^\d{4}-\d{2}-\d{2}$/.test(raw.paymentDate || '') ? raw.paymentDate : '',
     actDate: /^\d{4}-\d{2}-\d{2}$/.test(raw.actDate || '') ? raw.actDate : '',
     createdAt: Number(raw.createdAt) || Date.now(),

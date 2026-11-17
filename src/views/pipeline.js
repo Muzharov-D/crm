@@ -42,6 +42,7 @@ import { openEmailFlow } from '../ui/email.js';
 import { playbookButton, maybeOfferPlaybook } from '../ui/playbooks.js';
 import { catchUpButton } from '../ui/ai.js';
 import { attachmentsSection } from '../ui/attachments.js';
+import { canAdmin } from '../lib/access.js';
 
 export function pipelineView({ params }) {
   const id = params.get('id');
@@ -255,7 +256,7 @@ function dealsView(params) {
           toast(`${countLabel(records.length, ['сделка', 'сделки', 'сделок'])} ${plural(records.length, ['экспортирована', 'экспортированы', 'экспортировано'])}`, { icon: 'fileDown' });
         },
       },
-      {
+      ...(canAdmin(store.user) ? [{
         icon: 'trash', label: 'Удалить', danger: true,
         onClick: async () => {
           if (!await confirmBulkDelete(selection.size, plural(selection.size, ['сделку', 'сделки', 'сделок']))) return;
@@ -265,7 +266,7 @@ function dealsView(params) {
             toast(`${countLabel(entries.length, ['сделка', 'сделки', 'сделок'])} ${plural(entries.length, ['удалена', 'удалены', 'удалено'])}`, { icon: 'trash' });
           } catch { fail(); }
         },
-      },
+      }] : []),
     ];
   }
 
@@ -894,7 +895,7 @@ function dealDetail(id) {
             html: icon('pencil', 15, 2),
             onclick: () => openDealForm(deal),
           }, ' Изменить'),
-          el('button.icon-btn', {
+          canAdmin(store.user) && el('button.icon-btn', {
             html: icon('trash', 17, 2), 'aria-label': `Удалить «${deal.name}»`,
             onclick: async () => {
               const ok = await confirmDialog({

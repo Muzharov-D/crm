@@ -90,7 +90,7 @@ export function normalizeDealStep(raw = {}) {
 export function normalizeFieldHistory(raw = {}) {
   return {
     ...raw,
-    id: text(raw.id), dealId: link(raw.dealId), at: stamp(raw.at),
+    id: text(raw.id), dealId: link(raw.dealId), entityType: text(raw.entityType), entityId: link(raw.entityId), at: stamp(raw.at),
     actorId: link(raw.actorId), actorName: text(raw.actorName) || 'Системный процесс',
     field: text(raw.field), label: text(raw.label || raw.field),
     previousValue: raw.previousValue ?? null, newValue: raw.newValue ?? null,
@@ -100,9 +100,10 @@ export function normalizeFieldHistory(raw = {}) {
 }
 
 export function normalizeDealNotification(raw = {}) {
+  const taskId = link(raw.taskId || raw.stepId);
   return {
     ...raw,
-    id: text(raw.id), stepId: link(raw.stepId), dealId: link(raw.dealId), employeeId: link(raw.employeeId),
+    id: text(raw.id), taskId, stepId: taskId, dealId: link(raw.dealId), employeeId: link(raw.employeeId),
     kind: text(raw.kind) || 'overdue', active: raw.active === true,
     overdueDays: Math.max(0, Math.floor(Number(raw.overdueDays) || 0)),
     createdAt: stamp(raw.createdAt), updatedAt: stamp(raw.updatedAt, stamp(raw.createdAt)),
@@ -110,47 +111,54 @@ export function normalizeDealNotification(raw = {}) {
   };
 }
 
-/** Pure overdue projection. Reading a notification never changes `active`. */
-export function projectOverdue(steps = [], notifications = [], now = new Date()) {
-  const nextSteps = steps.map((raw) => {
-    const step = normalizeDealStep(raw);
-    return { ...step, overdueDays: step.status === 'active' ? overdueDays(step.due, now) : 0 };
-  });
-  // Index the very objects returned to the caller. Updating a separate
-  // normalized copy would leave the stored notification's day count stale.
+export const isCancelledTask = (task) => task?.status === 'Отменена' || Boolean(task?.cancelledAt);
+export const isOpenTask = (task) => !task?.done && !isCancelledTask(task);
+
+/** Pure overdue projection for every open task. Reading never clears `active`. */
+export function projectOverdue(tasks = [], notifications = [], now = new Date()) {
+  const at = now instanceof Date ? now.getTime() : Number(now);
+  const nextTasks = tasks.map((raw) => ({
+    ...raw,
+    overdueDays: isOpenTask(raw) ? overdueDays(raw.due, now) : 0,
+  }));
   const nextNotifications = notifications.map(normalizeDealNotification);
-  const byStep = new Map(nextNotifications.map((row) => [row.stepId, row]));
-  for (const step of nextSteps) {
-    if (step.status !== 'active') continue;
-    const days = step.overdueDays;
-    let note = byStep.get(step.id);
+  const byTask = new Map(nextNotifications.map((row) => [row.taskId || row.stepId, row]));
+  for (const task of nextTasks) {
+    if (!isOpenTask(task) || !task.dealId) continue;
+    const days = task.overdueDays;
+    let note = byTask.get(task.id);
     if (!note && days > 0) {
       note = normalizeDealNotification({
-        id: `overdue-${step.id}`, stepId: step.id, dealId: step.dealId, employeeId: step.employeeId,
-        active: true, overdueDays: days, createdAt: now instanceof Date ? now.getTime() : Number(now), updatedAt: now instanceof Date ? now.getTime() : Number(now),
+        id: `overdue-${task.id}`, taskId: task.id, dealId: task.dealId, employeeId: task.employeeId,
+        active: true, overdueDays: days, createdAt: at, updatedAt: at,
       });
       nextNotifications.push(note);
-      byStep.set(step.id, note);
+      byTask.set(task.id, note);
       continue;
     }
     if (!note) continue;
-    note.dealId = step.dealId;
-    note.employeeId = step.employeeId;
+    note.taskId = task.id;
+    note.stepId = task.id;
+    note.dealId = task.dealId;
+    note.employeeId = task.employeeId;
     note.overdueDays = days;
     note.active = days > 0;
-    note.updatedAt = now instanceof Date ? now.getTime() : Number(now);
+    note.updatedAt = at;
   }
-  // A cancelled/completed step has no current notification, even if unread.
-  const activeIds = new Set(nextSteps.filter((step) => step.status === 'active').map((step) => step.id));
-  for (const note of nextNotifications) if (!activeIds.has(note.stepId)) note.active = false;
-  return { steps: nextSteps, notifications: nextNotifications };
+  const activeIds = new Set(nextTasks.filter((task) => task.dealId && isOpenTask(task)).map((task) => task.id));
+  for (const note of nextNotifications) {
+    const id = note.taskId || note.stepId;
+    if (!activeIds.has(id)) note.active = false;
+  }
+  // `steps` is kept as a read-compatible alias for older integrations.
+  return { tasks: nextTasks, steps: nextTasks, notifications: nextNotifications };
 }
 
-export function activeStepFor(steps, dealId) {
-  return steps.find((step) => step.dealId === dealId && step.status === 'active') || null;
+export function nextTaskFor(tasks, dealId) {
+  return tasks.find((task) => task.dealId === dealId && task.isNextStep === true && isOpenTask(task)) || null;
 }
 
-export function assertOneActiveStep(steps, dealId) {
-  const count = steps.filter((step) => step.dealId === dealId && step.status === 'active').length;
-  if (count > 1) throw new Error('У сделки не может быть двух активных следующих шагов');
+export function assertOneNextStep(tasks, dealId) {
+  const count = tasks.filter((task) => task.dealId === dealId && task.isNextStep === true && isOpenTask(task)).length;
+  if (count > 1) throw new Error('У сделки не может быть двух основных следующих шагов');
 }

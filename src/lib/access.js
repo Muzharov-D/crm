@@ -9,7 +9,15 @@ export function roleLabel(role) {
 }
 
 export function canWrite(user) {
-  return user?.role !== 'viewer';
+  return user?.role === 'admin' || user?.role === 'manager';
+}
+
+export function canAdmin(user) {
+  return user?.role === 'admin';
+}
+
+export function adminOnlyError() {
+  return new Error('Удаление записей доступно только администратору');
 }
 
 export function readOnlyError() {

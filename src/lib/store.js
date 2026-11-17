@@ -63,8 +63,8 @@ import { createOutbox, idbStorage } from './outbox.js';
 import { normalizeViews, normalizeViewList, MAX_VIEWS } from './views.js';
 import { DEFAULT_COLD_DAYS } from './attention.js';
 import { normalizeQualification } from './qualification.js';
-import { canWrite, readOnlyError } from './access.js';
-import { DEFAULT_DICTIONARIES, dealTotals, normalizePayment } from './spec.js';
+import { canWrite, canAdmin, readOnlyError, adminOnlyError } from './access.js';
+import { DEFAULT_DICTIONARIES, LEAD_STAGES, dealTotals, normalizePayment } from './spec.js';
 import {
   canonicalDealStage, canonicalLeadStage, normalizeEmployee, normalizeLead, normalizeCompanyTeam,
   normalizeSalesTeam, migrateDealHistory, migrateLeadHistory, migratePayments,
@@ -73,7 +73,7 @@ import {
 import { CONTACT_STATUSES, ACTIVITY_TYPES } from './statuses.js';
 import {
   validateClosure, isFinalStage, outcomeForStage, normalizeDealStep, normalizeFieldHistory,
-  normalizeDealNotification, projectOverdue, activeStepFor, assertOneActiveStep, moscowDate,
+  normalizeDealNotification, projectOverdue, nextTaskFor, assertOneNextStep, isOpenTask, moscowDate,
   WINNER_UNKNOWN, WINNER_NONE,
 } from './deal-workflow.js';
 import {
@@ -158,6 +158,8 @@ const DEFAULT_SETTINGS = {
   dictionaries: structuredClone(DEFAULT_DICTIONARIES),
   salesPlans: {},
   specVersion: '2.1',
+  // Version 2 stores a deal's next step as a marker on an ordinary task.
+  taskModelVersion: 1,
   // Per-stage win-probability overrides ({ qualified: 0.3, ... }); stage
   // defaults from forecast.js apply where a stage has no entry.
   stageProbabilities: {},
@@ -233,24 +235,27 @@ function normalizeAll(list, normalize) {
 }
 
 function normalizeCompany(c) {
+  const createdAt = num(c.createdAt, Date.now());
   return {
     ...c, id: str(c.id) || uid(), name: str(c.name), industry: str(c.industry),
     website: str(c.website), size: str(c.size), notes: str(c.notes),
     inn: str(c.inn), role: str(c.role), parentCompanyId: idOrNull(c.parentCompanyId),
+    employeeId: idOrNull(c.employeeId), primaryContactId: idOrNull(c.primaryContactId),
     tags: normalizeTags(c.tags), custom: normalizeCustomValues(c.custom),
-    createdAt: num(c.createdAt, Date.now()),
+    createdAt, updatedAt: num(c.updatedAt, createdAt),
   };
 }
 
 function normalizeContact(c) {
+  const createdAt = num(c.createdAt, Date.now());
   return {
     ...c, id: str(c.id) || uid(), name: str(c.name), title: str(c.title),
     email: str(c.email), phone: str(c.phone), companyId: idOrNull(c.companyId),
-    source: str(c.source),
+    employeeId: idOrNull(c.employeeId), source: str(c.source),
     status: CONTACT_STATUSES.some((s) => s.value === c.status) ? c.status : 'lead',
     notes: str(c.notes), tags: normalizeTags(c.tags),
     custom: normalizeCustomValues(c.custom),
-    createdAt: num(c.createdAt, Date.now()),
+    createdAt, updatedAt: num(c.updatedAt, createdAt),
   };
 }
 
@@ -281,6 +286,7 @@ function normalizeDeal(d, { stageIds, fallbackStage } = {}) {
     product: str(d.product), subproduct: str(d.subproduct), topic: str(d.topic),
     userCount: Math.max(0, Math.floor(num(d.userCount))),
     source: str(d.source), channel: str(d.channel), employeeId: idOrNull(d.employeeId),
+    includeInForecastFY: ['yes', 'no'].includes(d.includeInForecastFY) ? d.includeInForecastFY : '',
     contacts, contactId: contacts[0]?.contactId ?? null,
     companyId: idOrNull(d.companyId), partnerId: idOrNull(d.partnerId),
     competitorIds: Array.isArray(d.competitorIds) ? [...new Set(d.competitorIds.map(str).filter(Boolean))] : [],
@@ -446,48 +452,93 @@ function normalizeTemplate(t) {
 }
 
 function normalizeTask(t) {
+  const cancelled = t.status === 'Отменена' || Boolean(t.cancelledAt);
+  const linked = normalizeTaskLinks({ ...t, done: cancelled ? false : t.done, status: cancelled ? 'К выполнению' : t.status });
+  const done = cancelled ? false : linked.done;
   return {
-    ...t, id: str(t.id) || uid(), title: str(t.title),
-    due: isoDate(t.due, todayISO()), dueTime: clockTime(t.dueTime), done: !!t.done,
-    doneAt: t.done ? num(t.doneAt, Date.now()) : null,
-    contactId: idOrNull(t.contactId), dealId: idOrNull(t.dealId), ...normalizeTaskLinks(t),
+    ...t, ...linked,
+    id: str(t.id) || uid(), title: str(t.title),
+    due: isoDate(t.due, todayISO()), dueTime: clockTime(t.dueTime), done,
+    status: cancelled ? 'Отменена' : (done ? 'Выполнено' : linked.status),
+    doneAt: done ? num(t.doneAt, Date.now()) : null,
+    isNextStep: !done && !cancelled && t.isNextStep === true,
+    originalDue: isoDate(t.originalDue, isoDate(t.due, '')),
+    changes: Array.isArray(t.changes) ? t.changes : [],
+    createdBy: idOrNull(t.createdBy), closedBy: idOrNull(t.closedBy),
+    cancelledAt: cancelled ? num(t.cancelledAt || t.doneAt, Date.now()) : null,
+    closeReason: cancelled ? str(t.closeReason) : '',
+    legacyStepId: idOrNull(t.legacyStepId), resultActivityId: idOrNull(t.resultActivityId),
+    revision: Math.max(1, Math.floor(num(t.revision, 1))),
+    contactId: idOrNull(t.contactId), dealId: idOrNull(t.dealId),
     // The email a playbook step meant this follow-up to send. A hint for
     // the Email button on the row, not a link to anything: the template
     // can be deleted and the follow-up still stands.
     templateId: idOrNull(t.templateId),
     repeat: normalizeRepeat(t.repeat), spawnedId: idOrNull(t.spawnedId),
+    overdueDays: Math.max(0, Math.floor(num(t.overdueDays))),
     createdAt: num(t.createdAt, Date.now()),
   };
 }
 
-/** Preserve legacy tasks, but promote only one real open task to the deal's active step. */
-function migrateDealSteps(deals, tasks, existing) {
-  const out = normalizeAll(existing, normalizeDealStep);
-  const covered = new Set(out.map((step) => step.dealId));
-  for (const deal of deals) {
-    if (covered.has(deal.id) || isFinalStage(deal.stage)) continue;
-    const candidates = tasks.filter((task) => task.dealId === deal.id && !task.done)
-      .sort((a, b) => a.due.localeCompare(b.due) || a.createdAt - b.createdAt);
-    const task = candidates[0];
-    const action = deal.nextStepText || task?.title;
-    const due = deal.nextStepDate || task?.due;
-    if (!action || !due) continue;
-    out.push(normalizeDealStep({
-      id: `legacy-step-${deal.id}`, dealId: deal.id, action, due, originalDue: due,
-      employeeId: task?.employeeId || deal.employeeId || null,
-      createdAt: task?.createdAt || deal.createdAt, createdBy: task?.employeeId || deal.employeeId || null,
-      migrated: true,
-    }));
-    covered.add(deal.id);
-  }
-  // Never let malformed imports violate the one-active-step invariant.
-  for (const deal of deals) {
-    const active = out.filter((step) => step.dealId === deal.id && step.status === 'active');
-    for (const duplicate of active.slice(1)) {
-      duplicate.status = 'cancelled';
-      duplicate.closeReason = 'Дубль активного шага снят при миграции';
-      duplicate.closedAt ||= Date.now();
+/** Fold the former dealSteps collection into ordinary tasks exactly once. */
+function migrateDealSteps(deals, tasks, existing, { legacy = false } = {}) {
+  const out = tasks.map(normalizeTask);
+  const steps = normalizeAll(existing, normalizeDealStep);
+  const nextDeals = new Set(out.filter((task) => task.isNextStep && isOpenTask(task)).map((task) => task.dealId));
+  for (const step of steps) {
+    let task = out.find((row) => row.id === step.id || row.legacyStepId === step.id);
+    // The previous migration could have made a step from an existing task.
+    // Reunite that exact pair instead of showing two rows after this one.
+    if (!task && step.status === 'active') {
+      task = out.find((row) => row.dealId === step.dealId && isOpenTask(row)
+        && row.title === step.action && row.due === step.due
+        && (!step.employeeId || !row.employeeId || row.employeeId === step.employeeId));
     }
+    const cancelled = step.status === 'cancelled';
+    const completed = step.status === 'completed';
+    const converted = normalizeTask({
+      ...(task || {}), id: task?.id || step.id, dealId: step.dealId,
+      title: step.action || task?.title, due: step.due || task?.due,
+      employeeId: step.employeeId || task?.employeeId || null,
+      status: cancelled ? 'Отменена' : completed ? 'Выполнено' : 'К выполнению',
+      done: completed, doneAt: completed ? step.closedAt : null,
+      cancelledAt: cancelled ? step.closedAt : null,
+      isNextStep: step.status === 'active' && !nextDeals.has(step.dealId),
+      originalDue: step.originalDue || task?.originalDue || step.due,
+      changes: step.changes?.length ? step.changes : task?.changes,
+      createdAt: step.createdAt || task?.createdAt, createdBy: step.createdBy || task?.createdBy,
+      closedBy: step.closedBy || task?.closedBy, closeReason: step.closeReason || task?.closeReason,
+      resultActivityId: step.resultActivityId || task?.resultActivityId,
+      revision: Math.max(task?.revision || 1, step.revision || 1), legacyStepId: step.id,
+      migrated: true,
+    });
+    if (task) Object.assign(task, converted);
+    else { out.push(converted); task = converted; }
+    if (task.isNextStep) nextDeals.add(step.dealId);
+  }
+  if (legacy) {
+    for (const deal of deals) {
+      if (nextDeals.has(deal.id) || isFinalStage(deal.stage)) continue;
+      const candidates = out.filter((task) => task.dealId === deal.id && isOpenTask(task))
+        .sort((a, b) => a.due.localeCompare(b.due) || a.createdAt - b.createdAt);
+      let task = candidates.find((row) => row.title === deal.nextStepText && row.due === deal.nextStepDate) || candidates[0];
+      if (!task && deal.nextStepText && deal.nextStepDate) {
+        task = normalizeTask({
+          id: `legacy-step-${deal.id}`, dealId: deal.id, title: deal.nextStepText, due: deal.nextStepDate,
+          originalDue: deal.nextStepDate, employeeId: deal.employeeId || null,
+          createdAt: deal.createdAt, createdBy: deal.employeeId || null, migrated: true,
+        });
+        out.push(task);
+      }
+      if (task) { task.isNextStep = true; nextDeals.add(deal.id); }
+    }
+  }
+  // Malformed imports and racing legacy writes still cannot create two markers.
+  const seen = new Set();
+  for (const task of out) {
+    if (!task.isNextStep || !isOpenTask(task)) continue;
+    if (seen.has(task.dealId)) task.isNextStep = false;
+    else seen.add(task.dealId);
   }
   return out;
 }
@@ -559,6 +610,11 @@ class Store extends EventTarget {
     if (!canWrite(this.user)) throw readOnlyError();
   }
 
+  #assertAdmin() {
+    this.#assertWritable();
+    if (!canAdmin(this.user)) throw adminOnlyError();
+  }
+
   /** Bumped on every emit, so refresh() can tell when it raced a mutation. */
   #mutations = 0;
 
@@ -608,6 +664,7 @@ class Store extends EventTarget {
     if (['companyId', 'partnerId', 'winnerCompanyId'].includes(field)) return this.companyById(value)?.name || 'Удалённый контрагент';
     if (['contactId', 'economicBuyerContactId', 'championContactId'].includes(field)) return this.contactById(value)?.name || 'Удалённый контакт';
     if (field === 'employeeId') return this.employeeById(value)?.name || 'Удалённый сотрудник';
+    if (field === 'includeInForecastFY') return value === 'yes' ? 'Да' : value === 'no' ? 'Нет' : 'Не выбрано';
     if (field === 'competitorIds') return (Array.isArray(value) ? value : []).map((id) => this.companyById(id)?.name || 'Удалённый контрагент').join(', ') || 'Не заполнено';
     if (field === 'contacts') return (Array.isArray(value) ? value : []).map((row) => this.contactById(row.contactId)?.name || 'Удалённый контакт').join(', ') || 'Не заполнено';
     if (field === 'stage') return this.stages().find((stage) => stage.id === value)?.label || value;
@@ -626,6 +683,7 @@ class Store extends EventTarget {
       budget: 'Бюджет', purchaseType: 'Тип покупки', closeReason: 'Причина закрытия', closeReasonNote: 'Комментарий закрытия',
       closedOn: 'Фактическая дата закрытия', winner: 'Кто выиграл', winnerCompanyId: 'Компания-победитель', notes: 'Комментарий',
       custom: 'Пользовательские поля', probabilityCategory: 'Категория вероятности', expectedClose: 'Плановая дата закрытия',
+      includeInForecastFY: 'Включать в прогноз ФГ',
     };
     const rows = [];
     for (const field of new Set(fields)) {
@@ -640,6 +698,46 @@ class Store extends EventTarget {
     }
     this.dealFieldHistory.push(...rows);
     return rows;
+  }
+
+  #displayEntityValue(field, value) {
+    if (value === null || value === undefined || value === '') return 'Не заполнено';
+    if (field === 'employeeId') return this.employeeById(value)?.name || 'Удалённый сотрудник';
+    if (['companyId', 'partnerId', 'parentCompanyId'].includes(field)) return this.companyById(value)?.name || 'Удалённый контрагент';
+    if (['contactId', 'primaryContactId'].includes(field)) return this.contactById(value)?.name || 'Удалённый контакт';
+    if (field === 'stage') return LEAD_STAGES.find((stage) => stage.id === value)?.label || value;
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  }
+
+  // The legacy collection key is retained for export compatibility; rows for
+  // other entity types carry entityType/entityId and never enter deal reports.
+  #entityHistory(entityType, record, before, fields, at) {
+    const labels = {
+      name: entityType === 'lead' ? 'Тема' : 'Название', status: 'Статус', stage: 'Стадия', source: 'Источник', channel: 'Канал',
+      product: 'Продукт', subproduct: 'Подпродукт', partnerId: 'Партнёр', closeReason: 'Причина закрытия / дисквалификации',
+      preliminaryBudget: 'Предварительный бюджет', employeeId: 'Ответственный', companyId: 'Контрагент', contactId: 'Контакт',
+      contactName: 'ФИО', contactTitle: 'Должность', phone: 'Телефон', email: 'Email', companyName: 'Название компании', inn: 'ИНН',
+      title: 'Должность', notes: 'Комментарий', description: 'Описание', industry: 'Отрасль', website: 'Сайт',
+      role: 'Роль контрагента', parentCompanyId: 'Головная структура', primaryContactId: 'Основной контакт',
+    };
+    const rows = [];
+    for (const field of new Set(fields)) {
+      if (!field || ['createdAt', 'updatedAt', 'closedAt', 'convertedDealId'].includes(field)) continue;
+      if (JSON.stringify(before[field]) === JSON.stringify(record[field])) continue;
+      rows.push(normalizeFieldHistory({
+        id: uid(), entityType, entityId: record.id, at, ...this.#actor(), field, label: labels[field] || field,
+        previousValue: before[field] ?? null, newValue: record[field] ?? null,
+        previousDisplay: this.#displayEntityValue(field, before[field]), newDisplay: this.#displayEntityValue(field, record[field]),
+      }));
+    }
+    this.dealFieldHistory.push(...rows);
+    return rows;
+  }
+
+  entityFieldHistoryFor(entityType, entityId) {
+    return this.dealFieldHistory.filter((row) => row.entityType === entityType && row.entityId === entityId)
+      .sort((a, b) => b.at - a.at || b.id.localeCompare(a.id));
   }
 
   /** A related-record mutation is also a visible update of its deal card. */
@@ -673,6 +771,8 @@ class Store extends EventTarget {
       ...structuredClone(DEFAULT_DICTIONARIES), ...(this.settings.dictionaries || {}),
     };
     this.settings.specVersion = '2.1';
+    const legacyTaskModel = this.settings.taskModelVersion !== 2;
+    this.settings.taskModelVersion = 2;
     this.settings.salesPlans ||= {};
     const stageCtx = this.#dealStageContext();
     this.companies = normalizeAll(this.companies, normalizeCompany);
@@ -683,17 +783,26 @@ class Store extends EventTarget {
     this.companyTeam = normalizeAll(this.companyTeam, normalizeCompanyTeam);
     this.salesTeam = normalizeSalesTeam(this.salesTeam);
     this.activities = normalizeAll(this.activities, normalizeActivity);
-    this.tasks = normalizeAll(this.tasks, normalizeTask);
+    this.tasks = migrateDealSteps(this.deals, normalizeAll(this.tasks, normalizeTask), this.dealSteps, { legacy: legacyTaskModel });
+    this.dealSteps = [];
     this.dealFieldHistory = normalizeAll(this.dealFieldHistory, normalizeFieldHistory);
-    this.dealSteps = migrateDealSteps(this.deals, this.tasks, this.dealSteps);
     this.dealNotifications = normalizeAll(this.dealNotifications, normalizeDealNotification);
+    for (const note of this.dealNotifications) {
+      const task = this.tasks.find((row) => row.id === (note.taskId || note.stepId) || row.legacyStepId === note.stepId);
+      if (task) { note.taskId = task.id; note.stepId = task.id; }
+    }
     this.payments = migratePayments(this.deals, this.payments);
     this.dealStageHistory = migrateDealHistory(this.deals, this.dealStageHistory);
     this.leadStageHistory = migrateLeadHistory(this.leads, this.leadStageHistory);
     this.#syncDealTotals();
-    const overdue = projectOverdue(this.dealSteps, this.dealNotifications);
-    this.dealSteps = overdue.steps;
+    const overdue = projectOverdue(this.tasks, this.dealNotifications);
+    this.tasks = overdue.tasks;
     this.dealNotifications = overdue.notifications;
+    for (const deal of this.deals) {
+      const next = this.activeDealTask(deal.id);
+      deal.nextStepText = next?.title || '';
+      deal.nextStepDate = next?.due || '';
+    }
     this.#lastContact = null;
     this.#links = null;
     if (!persist || !canWrite(this.user)) return;
@@ -1155,6 +1264,7 @@ class Store extends EventTarget {
     const settings = { ...this.settings, stages: list };
     const stages = resolveStages(settings);
     const ids = new Set(stages.map((s) => s.id));
+    if (this.stages().some((stage) => !isTerminalStage(stage.id) && !ids.has(stage.id))) this.#assertAdmin();
     settings.stageProbabilities = Object.fromEntries(
       Object.entries(this.settings.stageProbabilities || {}).filter(([id]) => ids.has(id)));
     const openIds = new Set(stages.filter((s) => !isTerminalStage(s.id)).map((s) => s.id));
@@ -1219,8 +1329,9 @@ class Store extends EventTarget {
     if (!isCustomKind(kind)) return { removed: 0, converted: 0 };
     const before = customFieldsOf(this.settings, kind);
     const next = normalizeFieldList(list);
-    const records = this[kind];
     const removedIds = before.filter((f) => !next.some((n) => n.id === f.id)).map((f) => f.id);
+    if (removedIds.length) this.#assertAdmin();
+    const records = this[kind];
     const retyped = next
       .map((f) => ({ field: f, from: before.find((b) => b.id === f.id) }))
       .filter((r) => r.from && r.from.type !== r.field.type);
@@ -1260,7 +1371,8 @@ class Store extends EventTarget {
     this.#assertWritable();
     const company = {
       id: uid(), name: '', industry: '', website: '', size: '', notes: '',
-      tags: [], custom: {}, createdAt: Date.now(), ...data,
+      employeeId: this.currentEmployee()?.id || null, primaryContactId: null,
+      tags: [], custom: {}, createdAt: Date.now(), updatedAt: Date.now(), ...data,
     };
     company.custom = normalizeCustomValues(company.custom);
     Object.assign(company, normalizeCompany(company));
@@ -1272,12 +1384,19 @@ class Store extends EventTarget {
 
   async updateCompany(id, patch) {
     this.#assertWritable();
+    if ('name' in patch && (typeof patch.name !== 'string' || !patch.name.trim())) {
+      throw new Error('Укажите название контрагента');
+    }
     const company = this.companyById(id);
     if (!company) return null;
-    Object.assign(company, patch);
+    const before = structuredClone(company);
+    const now = Date.now();
+    Object.assign(company, patch, { updatedAt: now });
     Object.assign(company, normalizeCompany(company));
+    const history = this.#entityHistory('company', company, before, Object.keys(patch), now);
     this.#emit();
-    await this.#save(KV.companies, this.companies);
+    await Promise.all([this.#save(KV.companies, this.companies),
+      ...(history.length ? [this.#save(KV.dealFieldHistory, this.dealFieldHistory)] : [])]);
     return company;
   }
 
@@ -1286,7 +1405,7 @@ class Store extends EventTarget {
    * stay. Returns the trash entry so the caller can offer Undo.
    */
   async deleteCompany(id) {
-    this.#assertWritable();
+    this.#assertAdmin();
     const company = this.companyById(id);
     if (!company) return null;
     const refs = {
@@ -1337,8 +1456,9 @@ class Store extends EventTarget {
     this.#assertWritable();
     const contact = {
       id: uid(), name: '', title: '', email: '', phone: '', companyId: null,
+      employeeId: this.currentEmployee()?.id || null,
       source: '', status: 'lead', notes: '', tags: [], custom: {},
-      createdAt: Date.now(), ...data,
+      createdAt: Date.now(), updatedAt: Date.now(), ...data,
     };
     contact.custom = normalizeCustomValues(contact.custom);
     Object.assign(contact, normalizeContact(contact));
@@ -1350,18 +1470,25 @@ class Store extends EventTarget {
 
   async updateContact(id, patch) {
     this.#assertWritable();
+    if ('name' in patch && (typeof patch.name !== 'string' || !patch.name.trim())) {
+      throw new Error('Укажите ФИО контакта');
+    }
     const contact = this.contactById(id);
     if (!contact) return null;
-    Object.assign(contact, patch);
+    const before = structuredClone(contact);
+    const now = Date.now();
+    Object.assign(contact, patch, { updatedAt: now });
     Object.assign(contact, normalizeContact(contact));
+    const history = this.#entityHistory('contact', contact, before, Object.keys(patch), now);
     this.#emit();
-    await this.#save(KV.contacts, this.contacts);
+    await Promise.all([this.#save(KV.contacts, this.contacts),
+      ...(history.length ? [this.#save(KV.dealFieldHistory, this.dealFieldHistory)] : [])]);
     return contact;
   }
 
   /** Deals and history survive a deleted contact - money and record-keeping outlive people churn. */
   async deleteContact(id) {
-    this.#assertWritable();
+    this.#assertAdmin();
     const contact = this.contactById(id);
     if (!contact) return null;
     const refs = {
@@ -1381,6 +1508,7 @@ class Store extends EventTarget {
       if (row.championContactId === id) row.championContactId = null;
     }
     for (const row of this.leads) if (row.contactId === id) row.contactId = null;
+    for (const row of this.companies) if (row.primaryContactId === id) row.primaryContactId = null;
     for (const row of this.activities) if (row.contactId === id) row.contactId = null;
     for (const row of this.tasks) if (row.contactId === id) row.contactId = null;
     this.companyTeam = this.companyTeam.filter((r) => r.contactId !== id);
@@ -1390,6 +1518,7 @@ class Store extends EventTarget {
     this.#emit();
     await Promise.all([
       this.#save(KV.contacts, this.contacts), this.#save(KV.deals, this.deals),
+      this.#save(KV.companies, this.companies),
       this.#save(KV.leads, this.leads), this.#save(KV.companyTeam, this.companyTeam),
       this.#save(KV.salesTeam, this.salesTeam),
       this.#save(KV.activities, this.activities), this.#save(KV.tasks, this.tasks),
@@ -1442,14 +1571,17 @@ class Store extends EventTarget {
   }
 
   async deleteEmployee(id) {
-    this.#assertWritable();
+    this.#assertAdmin();
     const employee = this.employeeById(id);
     if (!employee) return null;
-    if (this.dealSteps.some((step) => step.employeeId === id && step.status === 'active')) {
-      throw new Error('Сначала переназначьте активные следующие шаги этого сотрудника');
+    if (this.tasks.some((task) => task.dealId && task.employeeId === id && isOpenTask(task))) {
+      throw new Error('Сначала переназначьте открытые задачи этого сотрудника в сделках');
     }
     this.employees = this.employees.filter((e) => e.id !== id);
     for (const lead of this.leads) if (lead.employeeId === id) lead.employeeId = null;
+    for (const company of this.companies) if (company.employeeId === id) company.employeeId = null;
+    for (const contact of this.contacts) if (contact.employeeId === id) contact.employeeId = null;
+    for (const deal of this.deals) if (deal.employeeId === id) deal.employeeId = null;
     for (const task of this.tasks) if (task.employeeId === id) task.employeeId = null;
     // Activity authorship and closed-step ownership are append-only history:
     // deleting an employee must not rewrite who performed the past action.
@@ -1458,6 +1590,7 @@ class Store extends EventTarget {
     this.#emit();
     await Promise.all([
       this.#save(KV.employees, this.employees), this.#save(KV.leads, this.leads),
+      this.#save(KV.companies, this.companies), this.#save(KV.contacts, this.contacts), this.#save(KV.deals, this.deals),
       this.#save(KV.tasks, this.tasks), this.#save(KV.activities, this.activities),
       this.#save(KV.salesTeam, this.salesTeam),
     ]);
@@ -1475,9 +1608,9 @@ class Store extends EventTarget {
   async addLead(data) {
     this.#assertWritable();
     const now = Date.now();
-    const lead = normalizeLead({ id: uid(), createdAt: now, updatedAt: now, ...data });
+    const lead = normalizeLead({ id: uid(), employeeId: this.currentEmployee()?.id || null, createdAt: now, updatedAt: now, ...data });
     this.leads.push(lead);
-    this.leadStageHistory.push(newStageEntry('leadId', lead.id, '', lead.stage, lead.createdAt));
+    this.leadStageHistory.push({ ...newStageEntry('leadId', lead.id, '', lead.stage, lead.createdAt), ...this.#actor() });
     this.#emit();
     await Promise.all([this.#save(KV.leads, this.leads), this.#save(KV.leadStageHistory, this.leadStageHistory)]);
     return lead;
@@ -1490,20 +1623,23 @@ class Store extends EventTarget {
     if (lead.status === 'Дисквалифицирован' && patch.status && patch.status !== 'Дисквалифицирован') {
       throw new Error('Дисквалифицированный лид нельзя открыть повторно. Создайте новый лид.');
     }
+    const before = structuredClone(lead);
     const fromStage = lead.stage;
     const fromStatus = lead.status;
-    Object.assign(lead, patch, { updatedAt: Date.now() });
-    lead.stage = canonicalLeadStage(lead.stage);
+    const now = Date.now();
+    Object.assign(lead, normalizeLead({ ...lead, ...patch, updatedAt: now }));
     let stageChanged = false;
     if (lead.stage !== fromStage) {
-      this.leadStageHistory.push(newStageEntry('leadId', id, fromStage, lead.stage, lead.updatedAt));
+      this.leadStageHistory.push({ ...newStageEntry('leadId', id, fromStage, lead.stage, now), ...this.#actor() });
       stageChanged = true;
     }
-    if (['Дисквалифицирован', 'Закрыт'].includes(lead.status) && lead.status !== fromStatus) lead.closedAt = Date.now();
+    if (['Дисквалифицирован', 'Закрыт'].includes(lead.status) && lead.status !== fromStatus) lead.closedAt = now;
     if (!['Дисквалифицирован', 'Закрыт'].includes(lead.status)) lead.closedAt = null;
+    const history = this.#entityHistory('lead', lead, before, Object.keys(patch), now);
     this.#emit();
     const writes = [this.#save(KV.leads, this.leads)];
     if (stageChanged) writes.push(this.#save(KV.leadStageHistory, this.leadStageHistory));
+    if (history.length) writes.push(this.#save(KV.dealFieldHistory, this.dealFieldHistory));
     await Promise.all(writes);
     return lead;
   }
@@ -1520,8 +1656,9 @@ class Store extends EventTarget {
     if (lead.status !== 'Квалифицирован') throw new Error('В сделку можно перевести только квалифицированный лид');
     if (!(overrides.companyId || lead.companyId)) throw new Error('Перед переводом в сделку укажите контрагента лида');
     const deal = await this.addDeal({
-      name: lead.name, product: lead.product, subproduct: lead.subproduct,
-      contactId: lead.contactId, contacts: lead.contactId ? [{ contactId: lead.contactId, role: '', influence: '' }] : [],
+      name: lead.name, topic: lead.name, product: lead.product, subproduct: lead.subproduct,
+      employeeId: lead.employeeId, source: lead.source, channel: lead.channel,
+      contactId: lead.contactId, contacts: lead.contactId ? [{ contactId: lead.contactId, role: '', influence: '', position: '' }] : [],
       partnerId: lead.partnerId, companyId: lead.companyId, sourceLeadId: id,
       ...overrides,
     });
@@ -1535,7 +1672,7 @@ class Store extends EventTarget {
   }
 
   async deleteLead(id) {
-    this.#assertWritable();
+    this.#assertAdmin();
     const lead = this.leadById(id);
     if (!lead) return null;
     this.leads = this.leads.filter((l) => l.id !== id);
@@ -1639,6 +1776,7 @@ class Store extends EventTarget {
       if (deal.status === 'Завершена') deal.status = before.status === 'Завершена' ? 'Активно' : before.status;
     }
     deal.custom = normalizeCustomValues(deal.custom);
+    deal.includeInForecastFY = ['yes', 'no'].includes(deal.includeInForecastFY) ? deal.includeInForecastFY : '';
     deal.qualification = normalizeQualification(deal.qualification);
     settleDealContacts(deal, patch, beforeContacts);
     settleBilling(deal);
@@ -1696,7 +1834,7 @@ class Store extends EventTarget {
   }
 
   async deleteDeal(id) {
-    this.#assertWritable();
+    this.#assertAdmin();
     const deal = this.dealById(id);
     if (!deal) return null;
     const refs = {
@@ -1809,7 +1947,7 @@ class Store extends EventTarget {
   }
 
   async deletePayment(id) {
-    this.#assertWritable();
+    this.#assertAdmin();
     const payment = this.payments.find((p) => p.id === id);
     if (!payment) return null;
     const valueSnapshot = this.#paymentValueSnapshot(payment.dealId);
@@ -1861,20 +1999,39 @@ class Store extends EventTarget {
   async updateDictionary(key, values) {
     this.#assertWritable();
     if (!(key in DEFAULT_DICTIONARIES) || !Array.isArray(values)) throw new Error('Неизвестный справочник');
+    const remaining = new Set(values);
+    if ((this.settings.dictionaries?.[key] || []).some((value) => !remaining.has(value))) this.#assertAdmin();
     this.settings.dictionaries = { ...this.settings.dictionaries, [key]: values };
     this.#emit();
     await this.#save(KV.settings, this.settings);
     return this.settings.dictionaries[key];
   }
 
-  /* ---------- deal events and the single active next step ---------- */
+  /* ---------- deal records, tasks and the marked next step ---------- */
 
-  dealStepsFor(dealId) {
-    return this.dealSteps.filter((step) => step.dealId === dealId)
-      .sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+  dealTasksFor(dealId, { includeClosed = true } = {}) {
+    return this.tasks.filter((task) => task.dealId === dealId && (includeClosed || isOpenTask(task)))
+      .sort((a, b) => Number(!a.isNextStep) - Number(!b.isNextStep)
+        || Number(!isOpenTask(a)) - Number(!isOpenTask(b))
+        || (isOpenTask(a) ? a.due.localeCompare(b.due) || a.createdAt - b.createdAt : b.doneAt - a.doneAt || b.createdAt - a.createdAt));
   }
 
-  activeDealStep(dealId) { return activeStepFor(this.dealSteps, dealId); }
+  activeDealTask(dealId) { return nextTaskFor(this.tasks, dealId); }
+
+  // Read-compatible projections for older exports/integrations; the stored
+  // source of truth is the task itself, not a second dealSteps record.
+  dealStepsFor(dealId) {
+    return this.dealTasksFor(dealId).map((task) => ({
+      ...task, action: task.title,
+      status: task.status === 'Отменена' ? 'cancelled' : task.done ? 'completed' : 'active',
+      closedAt: task.doneAt || task.cancelledAt || null,
+    })).sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+  }
+
+  activeDealStep(dealId) {
+    const task = this.activeDealTask(dealId);
+    return task ? { ...task, action: task.title, status: 'active' } : null;
+  }
 
   dealFieldHistoryFor(dealId) {
     return this.dealFieldHistory.filter((row) => row.dealId === dealId)
@@ -1895,15 +2052,15 @@ class Store extends EventTarget {
   }
 
   async recalculateOverdue(now = new Date(), { persist = true } = {}) {
-    const before = JSON.stringify([this.dealSteps, this.dealNotifications]);
-    const projected = projectOverdue(this.dealSteps, this.dealNotifications, now);
-    this.dealSteps = projected.steps;
+    const before = JSON.stringify([this.tasks, this.dealNotifications]);
+    const projected = projectOverdue(this.tasks, this.dealNotifications, now);
+    this.tasks = projected.tasks;
     this.dealNotifications = projected.notifications;
-    if (before === JSON.stringify([this.dealSteps, this.dealNotifications])) return false;
+    if (before === JSON.stringify([this.tasks, this.dealNotifications])) return false;
     this.#emit();
     if (persist && canWrite(this.user)) {
       await Promise.all([
-        this.#save(KV.dealSteps, this.dealSteps),
+        this.#save(KV.tasks, this.tasks),
         this.#save(KV.dealNotifications, this.dealNotifications),
       ]);
     }
@@ -1927,153 +2084,57 @@ class Store extends EventTarget {
     return { ok: true, duplicate: false };
   }
 
-  async saveDealEvent(dealId, data = {}, { expectedRevision, operationId = uid() } = {}) {
+  async addDealRecord(dealId, data = {}, { expectedRevision, operationId = uid() } = {}) {
     this.#assertWritable();
     const duplicate = this.activities.find((activity) => activity.operationId === operationId);
     if (duplicate) return duplicate;
     const deal = this.dealById(dealId);
     if (!deal) throw new Error('Сделка не найдена');
-    if (expectedRevision !== undefined && Number(expectedRevision) !== deal.revision) {
-      const error = new Error('Сделка изменилась в другой вкладке. Текст события остался в форме — обновите данные и повторите сохранение.');
+    const revision = expectedRevision ?? deal.revision;
+    if (Number(revision) !== deal.revision) {
+      const error = new Error('Сделка изменилась в другой вкладке. Текст записи остался в форме — обновите данные и повторите сохранение.');
       error.code = 'STALE_DEAL';
       throw error;
     }
     const summary = str(data.summary).trim();
-    if (!summary) throw new Error('Заполните текущее событие / результат');
-    const action = data.stepAction || 'keep';
-    const actions = ['keep', 'complete-next', 'complete', 'change', 'cancel-replace', 'cancel', 'create'];
-    if (!actions.includes(action)) throw new Error('Неизвестное действие со следующим шагом');
-    const current = this.activeDealStep(dealId);
-    if (['complete-next', 'complete', 'change', 'cancel-replace', 'cancel'].includes(action) && !current) {
-      throw new Error('Активный следующий шаг не найден');
-    }
-    if (['cancel-replace', 'cancel'].includes(action) && !str(data.changeReason).trim()) {
-      throw new Error('Укажите причину отмены шага');
-    }
-    if (action === 'create' && current) throw new Error('Активный шаг уже существует. Выберите действие с текущим шагом.');
-
-    const targetStage = canonicalDealStage(data.stage || deal.stage) || deal.stage;
-    const terminal = isFinalStage(deal.stage);
-    // An event may move between working stages, but closing and correcting a
-    // result always require the dedicated, fully validated closure operation.
-    if ((terminal || isFinalStage(targetStage)) && targetStage !== deal.stage) {
-      throw new Error('Закрытие и исправление результата выполняются через блок «Закрытие сделки»');
-    }
-    if (terminal && current && !['complete', 'cancel'].includes(action)) {
-      throw new Error('У конечной сделки выполните или отмените текущий следующий шаг');
-    }
-    if (terminal && !current && action !== 'keep') throw new Error('Для закрытой сделки новый следующий шаг не создаётся');
-    if (!terminal && ['complete', 'cancel'].includes(action)) {
-      throw new Error('Для активной сделки после закрытия текущего шага назначьте следующий');
-    }
-    if (!terminal && !current && action === 'keep') throw new Error('Для активной сделки назначьте следующий шаг');
-
+    if (!summary) throw new Error('Заполните текст записи');
     const now = Date.now();
     const actor = this.#actor();
-    const employeeId = actor.actorId || this.currentEmployee()?.id || null;
-    const isActiveEmployee = (id) => this.employees.some((employee) => employee.id === id && employee.active !== false);
-    const snapshot = {
-      deals: structuredClone(this.deals), activities: structuredClone(this.activities),
-      dealSteps: structuredClone(this.dealSteps), dealStageHistory: structuredClone(this.dealStageHistory),
-      dealFieldHistory: structuredClone(this.dealFieldHistory), dealNotifications: structuredClone(this.dealNotifications),
-    };
+    const snapshot = { deals: structuredClone(this.deals), activities: structuredClone(this.activities) };
+    const activity = normalizeActivity({
+      id: uid(), type: data.type || 'note', date: moscowDate(now), eventAt: now,
+      summary, notes: str(data.notes), dealId, companyId: deal.companyId,
+      contactId: deal.contactId, leadId: deal.sourceLeadId,
+      employeeId: this.currentEmployee()?.id || actor.actorId,
+      createdAt: now, appendOnly: true, operationId,
+      stage: deal.stage, previousStage: deal.stage, newStage: deal.stage,
+    });
     try {
-      const activity = normalizeActivity({
-        id: uid(), type: data.type || 'note', date: moscowDate(now), eventAt: now, summary, notes: str(data.notes),
-        dealId, companyId: deal.companyId, contactId: deal.contactId, leadId: deal.sourceLeadId,
-        employeeId, createdAt: now, appendOnly: true, operationId, stepAction: action,
-        changeReason: str(data.changeReason), stage: targetStage,
-        previousStage: deal.stage, newStage: targetStage,
-      });
-      let closedStep = null;
-      let nextStep = null;
-      const nextData = data.nextStep || {};
-      const makeNext = () => {
-        const nextAction = str(nextData.action).trim();
-        if (!nextAction) throw new Error('Заполните действие следующего шага');
-        if (!isValidISODate(nextData.due)) throw new Error('Укажите корректную дату следующего шага');
-        const assignee = nextData.employeeId || employeeId;
-        if (!isActiveEmployee(assignee)) throw new Error('Выберите активного ответственного сотрудника');
-        return normalizeDealStep({
-          id: uid(), dealId, action: nextAction, due: nextData.due, originalDue: nextData.due,
-          employeeId: assignee, createdAt: now, createdBy: employeeId,
-        });
-      };
-      if (['complete-next', 'cancel-replace', 'complete', 'cancel'].includes(action)) {
-        if (['complete-next', 'cancel-replace'].includes(action)) nextStep = makeNext();
-        closedStep = current;
-        current.status = ['complete-next', 'complete'].includes(action) ? 'completed' : 'cancelled';
-        current.closedAt = now;
-        current.closedBy = employeeId;
-        current.resultActivityId = activity.id;
-        current.closeReason = ['cancel-replace', 'cancel'].includes(action) ? str(data.changeReason).trim() : '';
-        current.overdueDays = 0;
-        activity.closedStepId = current.id;
-        if (nextStep) activity.newStepId = nextStep.id;
-      } else if (action === 'change') {
-        const changed = [];
-        const values = { action: str(nextData.action).trim() || current.action, due: nextData.due || current.due, employeeId: nextData.employeeId || current.employeeId };
-        if (!isValidISODate(values.due)) throw new Error('Укажите корректную дату следующего шага');
-        for (const field of ['action', 'due', 'employeeId']) {
-          if (values[field] === current[field]) continue;
-          changed.push({ field, previousValue: current[field], newValue: values[field], at: now, actorId: employeeId, reason: str(data.changeReason).trim() });
-        }
-        if (changed.length && !str(data.changeReason).trim()) throw new Error('Укажите причину изменения действия, срока или ответственного');
-        if (values.employeeId !== current.employeeId && !isActiveEmployee(values.employeeId)) {
-          throw new Error('Выберите активного ответственного сотрудника');
-        }
-        Object.assign(current, values, { revision: current.revision + 1 });
-        current.changes = [...current.changes, ...changed];
-        activity.stepChanges = changed;
-        activity.closedStepId = current.id;
-      } else if (action === 'create') {
-        nextStep = makeNext();
-        activity.newStepId = nextStep.id;
-      }
-      if (nextStep) this.dealSteps.push(nextStep);
-      assertOneActiveStep(this.dealSteps, dealId);
-      if (!terminal && !this.activeDealStep(dealId)) throw new Error('Для активной сделки после сохранения должен быть следующий шаг');
-
-      const beforeDeal = structuredClone(deal);
-      if (targetStage !== deal.stage) {
-        const fromStage = deal.stage;
-        deal.stage = targetStage;
-        recordStageEntry(deal, deal.stage, now, fromStage);
-        this.dealStageHistory.push({ ...newStageEntry('dealId', dealId, fromStage, deal.stage, now), ...actor });
-      }
-      const active = this.activeDealStep(dealId);
-      deal.nextStepText = active?.action || '';
-      deal.nextStepDate = active?.due || '';
       deal.updatedAt = now;
       deal.revision = Math.max(1, deal.revision || 1) + 1;
-      this.#fieldHistory(deal, beforeDeal, ['stage', 'nextStepText', 'nextStepDate'], now);
       this.activities.push(activity);
-      const projected = projectOverdue(this.dealSteps, this.dealNotifications, new Date(now));
-      this.dealSteps = projected.steps;
-      this.dealNotifications = projected.notifications;
       this.#emit();
       const result = await this.#saveAtomic([
-        [KV.deals, this.deals], [KV.activities, this.activities], [KV.dealSteps, this.dealSteps],
-        [KV.dealStageHistory, this.dealStageHistory], [KV.dealFieldHistory, this.dealFieldHistory],
-        [KV.dealNotifications, this.dealNotifications],
-      ], { dealId, expectedRevision, operationId });
+        [KV.deals, this.deals], [KV.activities, this.activities],
+      ], { dealId, expectedRevision: revision, operationId });
       if (result?.duplicate) {
-        // The first request succeeded but its response was lost. Drop the
-        // optimistic twin, then recover the authoritative server collections.
-        Object.assign(this, snapshot);
-        this.#emit();
+        Object.assign(this, snapshot); this.#emit();
         await this.refresh().catch(() => false);
         const existing = this.activities.find((row) => row.operationId === operationId);
         if (existing) return existing;
         if (result.activity) return normalizeActivity(result.activity);
-        throw new Error('Событие уже сохранено. Обновите данные сделки, чтобы увидеть исходную запись.');
+        throw new Error('Запись уже сохранена. Обновите данные сделки, чтобы увидеть исходную запись.');
       }
       return activity;
     } catch (error) {
-      Object.assign(this, snapshot);
-      this.#emit();
-      throw error;
+      Object.assign(this, snapshot); this.#emit(); throw error;
     }
+  }
+
+  // Compatibility entry point: the former complex transition form is gone.
+  // Saving an event is now deliberately only an append-only text record.
+  saveDealEvent(dealId, data = {}, options = {}) {
+    return this.addDealRecord(dealId, data, options);
   }
 
   lastDealEvent(dealId) {
@@ -2088,18 +2149,8 @@ class Store extends EventTarget {
     if (data.date && data.date > todayISO()) throw new Error('Событие не может быть датировано будущим');
     if (data.dealId) {
       const deal = this.dealById(data.dealId);
-      if (!deal) throw new Error('Сделка для события не найдена');
-      const stepAction = data.stepAction || (this.activeDealStep(deal.id) ? 'keep' : 'create');
-      return this.saveDealEvent(deal.id, {
-        ...data,
-        stage: data.stage || deal.stage,
-        stepAction,
-        nextStep: data.nextStep || {
-          action: data.nextStepText || data.nextAction || '',
-          due: data.nextStepDate || data.nextDue || '',
-          employeeId: data.assigneeId || data.nextEmployeeId || this.currentEmployee()?.id || null,
-        },
-      }, {
+      if (!deal) throw new Error('Сделка для записи не найдена');
+      return this.addDealRecord(deal.id, data, {
         expectedRevision: data.expectedRevision ?? deal.revision,
         operationId: data.operationId || uid(),
       });
@@ -2142,7 +2193,7 @@ class Store extends EventTarget {
   }
 
   async deleteActivity(id) {
-    this.#assertWritable();
+    this.#assertAdmin();
     const activity = this.activities.find((a) => a.id === id);
     if (!activity) return null;
     if (activity.appendOnly || activity.dealId) {
@@ -2191,10 +2242,212 @@ class Store extends EventTarget {
       .slice(0, limit);
   }
 
+  #displayTaskValue(field, value) {
+    if (field === 'employeeId') return this.employeeById(value)?.name || 'Не назначен';
+    if (field === 'isNextStep') return value ? 'Следующий шаг' : 'Дополнительная задача';
+    if (value === null || value === undefined || value === '') return 'Не заполнено';
+    return String(value);
+  }
+
+  #taskHistory(task, before, fields, at) {
+    const labels = {
+      title: 'название', due: 'срок', employeeId: 'ответственный', status: 'статус',
+      isNextStep: 'роль в сделке', startDate: 'дата начала',
+    };
+    const rows = [];
+    for (const field of new Set(fields)) {
+      const previousValue = field === 'isNextStep' ? Boolean(before[field]) : before[field];
+      const newValue = field === 'isNextStep' ? Boolean(task[field]) : task[field];
+      if (JSON.stringify(previousValue) === JSON.stringify(newValue)) continue;
+      rows.push(normalizeFieldHistory({
+        id: uid(), dealId: task.dealId, taskId: task.id, at, ...this.#actor(),
+        field: `task.${field}`, label: `Задача «${before.title || task.title}»: ${labels[field] || field}`,
+        previousValue: previousValue ?? null, newValue: newValue ?? null,
+        previousDisplay: this.#displayTaskValue(field, previousValue),
+        newDisplay: this.#displayTaskValue(field, newValue),
+      }));
+    }
+    this.dealFieldHistory.push(...rows);
+  }
+
+  async #mutateDealTask(dealId, { expectedRevision, operationId = uid(), mutate }) {
+    this.#assertWritable();
+    const completed = this.tasks.find((task) => task.lastOperationId === operationId);
+    if (completed) return completed;
+    const duplicate = this.activities.find((activity) => activity.operationId === operationId);
+    if (duplicate) return this.tasks.find((task) => task.id === duplicate.taskId) || duplicate;
+    const deal = this.dealById(dealId);
+    if (!deal) throw new Error('Сделка не найдена');
+    const revision = expectedRevision ?? deal.revision;
+    if (Number(revision) !== deal.revision) {
+      const error = new Error('Сделка изменилась в другой вкладке. Введённые данные сохранены в форме — повторите операцию после обновления.');
+      error.code = 'STALE_DEAL';
+      throw error;
+    }
+    const snapshot = {
+      deals: structuredClone(this.deals), tasks: structuredClone(this.tasks),
+      activities: structuredClone(this.activities), dealFieldHistory: structuredClone(this.dealFieldHistory),
+      dealNotifications: structuredClone(this.dealNotifications),
+    };
+    try {
+      const now = Date.now();
+      const actor = this.#actor();
+      const beforeDeal = structuredClone(deal);
+      const outcome = await mutate({ deal, now, actor });
+      const task = outcome.task;
+      if (!task || outcome.noop) return task;
+      assertOneNextStep(this.tasks, dealId);
+      task.lastOperationId = operationId;
+      const next = this.activeDealTask(dealId);
+      deal.nextStepText = next?.title || '';
+      deal.nextStepDate = next?.due || '';
+      deal.updatedAt = now;
+      deal.revision = Math.max(1, deal.revision || 1) + 1;
+      this.#fieldHistory(deal, beforeDeal, ['nextStepText', 'nextStepDate'], now);
+      if (outcome.summary) {
+        const activity = normalizeActivity({
+          id: uid(), type: 'note', date: moscowDate(now), eventAt: now,
+          summary: outcome.summary, dealId, companyId: deal.companyId,
+          contactId: deal.contactId, leadId: deal.sourceLeadId,
+          employeeId: this.currentEmployee()?.id || actor.actorId,
+          createdAt: now, appendOnly: true, operationId,
+          stage: deal.stage, previousStage: deal.stage, newStage: deal.stage,
+          taskId: task.id, taskOperation: outcome.operation || '',
+        });
+        this.activities.push(activity);
+        if (['complete', 'cancel'].includes(outcome.operation)) task.resultActivityId = activity.id;
+      }
+      const projected = projectOverdue(this.tasks, this.dealNotifications, new Date(now));
+      this.tasks = projected.tasks;
+      this.dealNotifications = projected.notifications;
+      this.#emit();
+      const result = await this.#saveAtomic([
+        [KV.deals, this.deals], [KV.tasks, this.tasks], [KV.activities, this.activities],
+        [KV.dealFieldHistory, this.dealFieldHistory], [KV.dealNotifications, this.dealNotifications],
+      ], { dealId, expectedRevision: revision, operationId });
+      if (result?.duplicate) {
+        Object.assign(this, snapshot); this.#emit();
+        await this.refresh().catch(() => false);
+        const existing = this.tasks.find((row) => row.lastOperationId === operationId)
+          || this.tasks.find((row) => row.id === this.activities.find((activity) => activity.operationId === operationId)?.taskId);
+        if (existing) return existing;
+        throw new Error('Операция уже сохранена. Обновите данные сделки, чтобы увидеть результат.');
+      }
+      return this.tasks.find((row) => row.id === task.id) || task;
+    } catch (error) {
+      Object.assign(this, snapshot); this.#emit(); throw error;
+    }
+  }
+
+  async addDealTask(dealId, data = {}, options = {}) {
+    const title = str(data.title).trim();
+    if (!title) throw new Error('Заполните текст задачи');
+    if (!isValidISODate(data.due)) throw new Error('Укажите корректный срок задачи');
+    const employeeId = data.employeeId || this.currentEmployee()?.id || null;
+    if (!this.employees.some((employee) => employee.id === employeeId && employee.active !== false)) {
+      throw new Error('Выберите активного ответственного сотрудника');
+    }
+    return this.#mutateDealTask(dealId, { ...options, mutate: ({ now }) => {
+      const hasOpen = this.tasks.some((task) => task.dealId === dealId && isOpenTask(task));
+      const task = normalizeTask({
+        ...data, id: uid(), title, due: data.due, employeeId, dealId,
+        status: 'К выполнению', done: false, doneAt: null, cancelledAt: null,
+        isNextStep: !hasOpen, originalDue: data.due,
+        startDate: data.startDate || todayISO(), createdAt: now,
+        createdBy: this.currentEmployee()?.id || this.#actor().actorId,
+      });
+      this.tasks.push(task);
+      this.#taskHistory(task, {}, ['title', 'employeeId', 'due', 'status', 'isNextStep'], now);
+      return { task, summary: `Создана задача: ${title}`, operation: 'create' };
+    } });
+  }
+
+  async updateDealTask(id, patch = {}, options = {}) {
+    const existing = this.tasks.find((task) => task.id === id);
+    if (!existing) return null;
+    if (!existing.dealId) throw new Error('Задача не связана со сделкой');
+    return this.#mutateDealTask(existing.dealId, { ...options, mutate: ({ now }) => {
+      const task = this.tasks.find((row) => row.id === id);
+      const before = structuredClone(task);
+      const next = { ...task, ...patch, id: task.id, dealId: task.dealId };
+      const changesStatus = 'done' in patch || 'status' in patch;
+      if (changesStatus && patch.status === 'Отменена') {
+        Object.assign(next, { status: 'Отменена', done: false, doneAt: null, cancelledAt: now, closedBy: this.currentEmployee()?.id || null, isNextStep: false });
+      } else if (changesStatus && (patch.done === true || patch.status === 'Выполнено')) {
+        Object.assign(next, { status: 'Выполнено', done: true, doneAt: now, cancelledAt: null, closedBy: this.currentEmployee()?.id || null, isNextStep: false });
+      } else if (changesStatus && (patch.done === false || patch.status === 'К выполнению')) {
+        Object.assign(next, { status: patch.status || 'К выполнению', done: false, doneAt: null, cancelledAt: null, closedBy: null, isNextStep: false });
+      }
+      next.title = str(next.title).trim();
+      if (!next.title) throw new Error('Заполните текст задачи');
+      if (!isValidISODate(next.due)) throw new Error('Укажите корректный срок задачи');
+      if (isOpenTask(next) && !this.employees.some((employee) => employee.id === next.employeeId && employee.active !== false)) {
+        throw new Error('Выберите активного ответственного сотрудника');
+      }
+      const normalized = normalizeTask(next);
+      const comparable = (value) => {
+        const copy = { ...value };
+        delete copy.revision; delete copy.lastOperationId; delete copy.overdueDays;
+        return JSON.stringify(copy);
+      };
+      if (comparable(normalized) === comparable(before)) return { task, noop: true };
+      const changes = [];
+      for (const field of ['title', 'due', 'employeeId']) {
+        if (before[field] === normalized[field]) continue;
+        changes.push({ field, previousValue: before[field], newValue: normalized[field], at: now, actorId: this.#actor().actorId, reason: '' });
+      }
+      Object.assign(task, normalized, { revision: Math.max(1, before.revision || 1) + 1, changes: [...(before.changes || []), ...changes] });
+      this.#taskHistory(task, before, ['title', 'employeeId', 'due', 'startDate', 'status', 'isNextStep'], now);
+      const operation = !before.done && task.done ? 'complete' : before.status !== 'Отменена' && task.status === 'Отменена' ? 'cancel' : '';
+      const summary = operation === 'complete' ? `Выполнена задача: ${task.title}`
+        : operation === 'cancel' ? `Отменена задача: ${task.title}` : '';
+      return { task, summary, operation };
+    } });
+  }
+
+  completeDealTask(id, options = {}) {
+    const task = this.tasks.find((row) => row.id === id);
+    return this.updateDealTask(id, { done: true, status: 'Выполнено' }, {
+      ...options, operationId: options.operationId || `complete-task-${id}-${task?.revision || 1}`,
+    });
+  }
+
+  cancelDealTask(id, options = {}) {
+    const task = this.tasks.find((row) => row.id === id);
+    return this.updateDealTask(id, { status: 'Отменена', done: false }, {
+      ...options, operationId: options.operationId || `cancel-task-${id}-${task?.revision || 1}`,
+    });
+  }
+
+  async setDealNextStep(id, options = {}) {
+    const selected = this.tasks.find((task) => task.id === id);
+    if (!selected?.dealId) throw new Error('Задача сделки не найдена');
+    return this.#mutateDealTask(selected.dealId, { ...options, mutate: ({ now }) => {
+      const task = this.tasks.find((row) => row.id === id);
+      if (!isOpenTask(task)) throw new Error('Завершённую задачу нельзя назначить следующим шагом');
+      const changed = this.tasks.filter((row) => row.dealId === task.dealId
+        && ((row.id === task.id && !row.isNextStep) || (row.id !== task.id && row.isNextStep)));
+      if (!changed.length) return { task, noop: true };
+      for (const row of changed) {
+        const before = structuredClone(row);
+        row.isNextStep = row.id === task.id;
+        row.revision = Math.max(1, row.revision || 1) + 1;
+        this.#taskHistory(row, before, ['isNextStep'], now);
+      }
+      return { task };
+    } });
+  }
+
   /* ---------- tasks (follow-ups) ---------- */
 
   async addTask(data) {
     this.#assertWritable();
+    if (data.dealId) {
+      const task = await this.addDealTask(data.dealId, { due: todayISO(), ...data });
+      if (data.status === 'Отменена') return this.cancelDealTask(task.id);
+      if (data.done || data.status === 'Выполнено') return this.completeDealTask(task.id);
+      return task;
+    }
     const task = {
       id: uid(), title: '', due: todayISO(), dueTime: '', done: false, doneAt: null,
       contactId: null, dealId: null, companyId: null, leadId: null,
@@ -2215,7 +2468,9 @@ class Store extends EventTarget {
 
   async updateTask(id, patch) {
     this.#assertWritable();
-    const task = this.tasks.find((t) => t.id === id);
+    const linked = this.tasks.find((task) => task.id === id);
+    if (linked?.dealId) return this.updateDealTask(id, patch);
+    const task = linked;
     if (!task) return null;
     const previousDealId = task.dealId;
     Object.assign(task, patch);
@@ -2242,6 +2497,9 @@ class Store extends EventTarget {
     this.#assertWritable();
     const task = this.tasks.find((t) => t.id === id);
     if (!task) return null;
+    if (task.dealId && !task.repeat) {
+      return this.updateDealTask(id, { done, status: done ? 'Выполнено' : 'К выполнению' });
+    }
     if (done && !task.done && task.repeat) {
       const next = {
         id: uid(), title: task.title,
@@ -2275,7 +2533,7 @@ class Store extends EventTarget {
   }
 
   async deleteTask(id) {
-    this.#assertWritable();
+    this.#assertAdmin();
     const task = this.tasks.find((t) => t.id === id);
     if (!task) return null;
     this.tasks = this.tasks.filter((t) => t.id !== id);
@@ -2292,7 +2550,7 @@ class Store extends EventTarget {
 
   /** Open follow-ups, soonest due first (timed ones ahead of "sometime today"). */
   openTasks() {
-    return this.tasks.filter((t) => !t.done).sort(byDue);
+    return this.tasks.filter(isOpenTask).sort(byDue);
   }
 
   tasksFor({ contactId, dealId, companyId, leadId, employeeId } = {}) {
@@ -2300,7 +2558,7 @@ class Store extends EventTarget {
       .filter((t) => (contactId && t.contactId === contactId) || (dealId && t.dealId === dealId)
         || (companyId && t.companyId === companyId) || (leadId && t.leadId === leadId)
         || (employeeId && t.employeeId === employeeId))
-      .sort((a, b) => Number(a.done) - Number(b.done) || byDue(a, b));
+      .sort((a, b) => Number(!isOpenTask(a)) - Number(!isOpenTask(b)) || byDue(a, b));
   }
 
   /* ---------- saved views ----------
@@ -2316,7 +2574,10 @@ class Store extends EventTarget {
     this.#assertWritable();
     const all = { ...normalizeViews(this.settings.views) };
     if (!(kind in all)) return [];
-    all[kind] = normalizeViewList(kind, list).slice(0, MAX_VIEWS);
+    const next = normalizeViewList(kind, list).slice(0, MAX_VIEWS);
+    const remaining = new Set(next.map((row) => row.id));
+    if (all[kind].some((row) => !remaining.has(row.id))) this.#assertAdmin();
+    all[kind] = next;
     this.settings = { ...this.settings, views: all };
     this.#emit();
     await this.#save(KV.settings, this.settings);
@@ -2333,7 +2594,10 @@ class Store extends EventTarget {
   /** Replace the saved playbooks. */
   async setPlaybooks(list) {
     this.#assertWritable();
-    this.settings = { ...this.settings, playbooks: normalizePlaybooks(list) };
+    const next = normalizePlaybooks(list);
+    const remaining = new Set(next.map((row) => row.id));
+    if (this.playbooks().some((row) => !remaining.has(row.id))) this.#assertAdmin();
+    this.settings = { ...this.settings, playbooks: next };
     this.#emit();
     await this.#save(KV.settings, this.settings);
     return this.playbooks();
@@ -2365,7 +2629,7 @@ class Store extends EventTarget {
    * Recently deleted would bury the deletes that matter.
    */
   async undoAddedTasks(ids) {
-    this.#assertWritable();
+    this.#assertAdmin();
     const wanted = new Set(ids);
     const before = this.tasks.length;
     this.tasks = this.tasks.filter((t) => !wanted.has(t.id));
@@ -2399,7 +2663,7 @@ class Store extends EventTarget {
   }
 
   async deleteTemplate(id) {
-    this.#assertWritable();
+    this.#assertAdmin();
     const template = this.templates.find((t) => t.id === id);
     if (!template) return null;
     this.templates = this.templates.filter((t) => t.id !== id);
@@ -2431,7 +2695,7 @@ class Store extends EventTarget {
   }
 
   async deleteAttachment(id) {
-    this.#assertWritable();
+    this.#assertAdmin();
     const attachment = this.attachments.find((a) => a.id === id);
     if (!attachment) return null;
     this.attachments = this.attachments.filter((a) => a.id !== id);
@@ -2524,7 +2788,7 @@ class Store extends EventTarget {
    * detached the same way the single deletes do. Returns entries created.
    */
   async bulkDelete(kind, ids) {
-    this.#assertWritable();
+    this.#assertAdmin();
     const method = { contacts: 'deleteContact', companies: 'deleteCompany', deals: 'deleteDeal' }[kind];
     if (!method) return [];
     const entries = [];
@@ -2551,7 +2815,7 @@ class Store extends EventTarget {
    * the user picked from the merged record. Returns the trash entry.
    */
   async mergeContacts(survivorId, mergedId, patch = {}) {
-    this.#assertWritable();
+    this.#assertAdmin();
     const survivor = this.contactById(survivorId);
     const merged = this.contactById(mergedId);
     if (!survivor || !merged || survivorId === mergedId) return null;
@@ -2607,7 +2871,7 @@ class Store extends EventTarget {
   }
 
   async mergeCompanies(survivorId, mergedId, patch = {}) {
-    this.#assertWritable();
+    this.#assertAdmin();
     const survivor = this.companyById(survivorId);
     const merged = this.companyById(mergedId);
     if (!survivor || !merged || survivorId === mergedId) return null;
@@ -2924,7 +3188,7 @@ class Store extends EventTarget {
   }
 
   async emptyTrash() {
-    this.#assertWritable();
+    this.#assertAdmin();
     // Emptying is the user saying "gone for good" - attachment entries
     // give their stored files back now rather than at expiry. Cleared
     // first, so the entries about to go cannot vouch for their own files;
@@ -3006,7 +3270,7 @@ class Store extends EventTarget {
    * so the restore itself can be undone if it was the wrong call.
    */
   async restoreBackup() {
-    this.#assertWritable();
+    this.#assertAdmin();
     const snapshot = this.backup;
     if (!snapshot?.data) return false;
     await this.importAll(snapshot.data, { reason: 'restore' });
@@ -3290,7 +3554,7 @@ class Store extends EventTarget {
    * and crash every view that sorts on those fields.
    */
   async importAll(data, { reason = 'import' } = {}) {
-    this.#assertWritable();
+    this.#assertAdmin();
     if (!data || data.app !== 'crm' || !Number.isInteger(data.version)) {
       throw new Error('Not a CRM export file');
     }
@@ -3315,15 +3579,26 @@ class Store extends EventTarget {
     this.leadStageHistory = migrateLeadHistory(this.leads, data.leadStageHistory);
     this.dealFieldHistory = normalizeAll(data.dealFieldHistory, normalizeFieldHistory);
     this.activities = normalizeAll(data.activities, normalizeActivity);
-    this.tasks = normalizeAll(data.tasks, normalizeTask);
-    this.dealSteps = migrateDealSteps(this.deals, this.tasks, data.dealSteps);
+    const legacyTaskModel = this.settings.taskModelVersion !== 2;
+    this.settings.taskModelVersion = 2;
+    this.tasks = migrateDealSteps(this.deals, normalizeAll(data.tasks, normalizeTask), data.dealSteps, { legacy: legacyTaskModel });
+    this.dealSteps = [];
     this.dealNotifications = normalizeAll(data.dealNotifications, normalizeDealNotification);
+    for (const note of this.dealNotifications) {
+      const task = this.tasks.find((row) => row.id === (note.taskId || note.stepId) || row.legacyStepId === note.stepId);
+      if (task) { note.taskId = task.id; note.stepId = task.id; }
+    }
     this.templates = normalizeAll(data.templates, normalizeTemplate);
     this.attachments = normalizeAll(data.attachments, normalizeAttachment);
     this.#syncDealTotals();
-    const overdue = projectOverdue(this.dealSteps, this.dealNotifications);
-    this.dealSteps = overdue.steps;
+    const overdue = projectOverdue(this.tasks, this.dealNotifications);
+    this.tasks = overdue.tasks;
     this.dealNotifications = overdue.notifications;
+    for (const deal of this.deals) {
+      const next = this.activeDealTask(deal.id);
+      deal.nextStepText = next?.title || '';
+      deal.nextStepDate = next?.due || '';
+    }
     // Two manifests may have just lost their holder: the previous
     // snapshot's (the slot rotated above) and the outgoing live one (now
     // in the new snapshot - or nowhere, when there was nothing to

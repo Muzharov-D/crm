@@ -102,7 +102,7 @@ export function advancedFilters(fields, filters, onChange) {
       operator.addEventListener('change', () => { filter.op = operator.value; render(); onChange(); });
       value.addEventListener('input', () => { filter.value = value.value; onChange(); });
       root.append(el('div.advanced-filter-row', {}, fieldSelect, operator, value,
-        el('button.btn.btn-ghost', { type: 'button', 'aria-label': `Удалить фильтр ${index + 1}`, onclick: () => { filters.splice(index, 1); render(); onChange(); } }, 'Удалить')));
+        el('button.btn.btn-ghost', { type: 'button', 'aria-label': `Убрать фильтр ${index + 1}`, onclick: () => { filters.splice(index, 1); render(); onChange(); } }, 'Убрать')));
     });
     root.append(el('button.btn.btn-ghost.advanced-filter-add', { type: 'button', onclick: () => {
       const field = fields[0];
